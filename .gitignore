@@ -1,0 +1,15 @@
+# Abaikan SEMUA node_modules di folder manapun
+**/node_modules
+
+# Abaikan file rahasia backend
+# (Sesuaikan namanya jika kamu ganti nama folder)
+wms_backend/.env
+
+# Abaikan build/cache frontend
+# (Sesuaikan namanya jika kamu ganti nama folder)
+wms_frontend/dist/
+wms_frontend/.vite/
+
+# OS files
+.DS_Store
+Thumbs.db
