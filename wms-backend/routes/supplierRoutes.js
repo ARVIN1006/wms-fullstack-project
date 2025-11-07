@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth'); // Kita amankan semua rute
+const authorize = require('../middleware/role');
 
 // GET /api/suppliers (Ambil semua supplier)
 // Kita buat ini bisa pagination & search juga, untuk jaga-jaga
-router.get('/', auth, async (req, res) => {
+router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
   try {
     const { search = '', page = 1, limit = 10 } = req.query;
 
@@ -54,7 +55,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/suppliers (Buat supplier baru)
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, authorize(['admin']), async (req, res) => {
   try {
     const { name, contact_person, phone, address } = req.body;
     if (!name) {
@@ -72,7 +73,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // PUT /api/suppliers/:id (Update supplier)
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, authorize(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, contact_person, phone, address } = req.body;
@@ -94,7 +95,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // DELETE /api/suppliers/:id (Hapus supplier)
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, authorize(['admin']), async (req, res) => {
   try {
     const { id } = req.params;
     const deleteOp = await db.query('DELETE FROM suppliers WHERE id = $1 RETURNING *', [id]);

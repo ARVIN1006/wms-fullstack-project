@@ -31,9 +31,9 @@ async function superSeeder() {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash('password123', salt);
     await client.query(
-      'INSERT INTO users (username, password_hash) VALUES ($1, $2)',
-      ['admin', passwordHash]
-    );
+  'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)',
+  ['admin', passwordHash, 'admin'] 
+);
 
     // 5. SEED LOCATIONS
     console.log('Membuat lokasi dummy...');

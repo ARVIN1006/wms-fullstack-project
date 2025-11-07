@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
-import SupplierForm from '../components/SupplierForm';
+import CustomerForm from '../components/CustomerForm'; // Impor form pelanggan
 import ConfirmModal from '../components/ConfirmModal';
-import { useAuth } from '../context/AuthContext'; // Impor useAuth untuk role
+import { useAuth } from '../context/AuthContext';
 
 const LIMIT_PER_PAGE = 10;
 
-function SupplierList() {
-  const [suppliers, setSuppliers] = useState([]);
+function CustomerList() {
+  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [editingSupplier, setEditingSupplier] = useState(null);
+  const [editingCustomer, setEditingCustomer] = useState(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [supplierToDelete, setSupplierToDelete] = useState(null);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
 
   // Pagination dan Search
   const [currentPage, setCurrentPage] = useState(1);
@@ -23,20 +23,21 @@ function SupplierList() {
 
   // Role dari Context
   const { userRole } = useAuth();
+  const isAdmin = userRole === 'admin';
 
   // --- Fungsi Utama Fetch Data ---
-  async function fetchSuppliers(page, search) {
+  async function fetchCustomers(page, search) {
     try {
       setLoading(true);
       const response = await axios.get(
-        `/api/suppliers?page=${page}&limit=${LIMIT_PER_PAGE}&search=${search}`
+        `/api/customers?page=${page}&limit=${LIMIT_PER_PAGE}&search=${search}`
       );
-      setSuppliers(response.data.suppliers);
+      setCustomers(response.data.customers);
       setTotalPages(response.data.totalPages);
       setCurrentPage(response.data.currentPage);
     } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        toast.error('Gagal memuat data supplier.');
+        toast.error('Gagal memuat data pelanggan.');
       }
     } finally {
       setLoading(false);
@@ -44,69 +45,68 @@ function SupplierList() {
   }
 
   useEffect(() => {
-    fetchSuppliers(currentPage, activeSearch);
+    fetchCustomers(currentPage, activeSearch);
   }, [currentPage, activeSearch]);
 
   // --- Handlers Modal & CRUD ---
   const handleCloseFormModal = () => {
     setIsFormModalOpen(false);
-    setEditingSupplier(null);
+    setEditingCustomer(null);
   };
 
   const handleAddClick = () => {
-    setEditingSupplier(null);
+    setEditingCustomer(null);
     setIsFormModalOpen(true);
   };
 
-  const handleEditClick = (supplier) => {
-    setEditingSupplier(supplier);
+  const handleEditClick = (customer) => {
+    if (!isAdmin) return;
+    setEditingCustomer(customer);
     setIsFormModalOpen(true);
   };
 
-  const handleSaveSupplier = async (supplierData) => {
+  const handleSaveCustomer = async (customerData) => {
     try {
-      if (supplierData.id) {
+      if (customerData.id) {
         // UPDATE
-        await axios.put(`/api/suppliers/${supplierData.id}`, supplierData);
-        toast.success('Supplier berhasil diupdate!');
+        await axios.put(`/api/customers/${customerData.id}`, customerData);
+        toast.success('Pelanggan berhasil diupdate!');
       } else {
         // CREATE
-        await axios.post('/api/suppliers', supplierData);
-        toast.success('Supplier baru berhasil ditambahkan!');
+        await axios.post('/api/customers', customerData);
+        toast.success('Pelanggan baru berhasil ditambahkan!');
       }
       handleCloseFormModal();
-      // Refresh ke halaman 1 jika ada data baru
       if (currentPage !== 1) setCurrentPage(1);
-      else fetchSuppliers(currentPage, activeSearch);
+      else fetchCustomers(currentPage, activeSearch);
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Gagal menyimpan supplier.');
+      toast.error(err.response?.data?.msg || 'Gagal menyimpan pelanggan.');
     }
   };
 
-  const handleDeleteClick = (supplier) => {
-    setSupplierToDelete(supplier);
+  const handleDeleteClick = (customer) => {
+    if (!isAdmin) return;
+    setCustomerToDelete(customer);
     setIsConfirmModalOpen(true);
   };
 
   const handleCloseConfirmModal = () => {
     setIsConfirmModalOpen(false);
-    setSupplierToDelete(null);
+    setCustomerToDelete(null);
   };
 
   const handleConfirmDelete = async () => {
-    if (!supplierToDelete) return;
+    if (!customerToDelete) return;
     try {
-      await axios.delete(`/api/suppliers/${supplierToDelete.id}`);
-      toast.success(`Supplier "${supplierToDelete.name}" berhasil dihapus.`);
-      
-      // Logika Pagination saat menghapus
-      if (suppliers.length === 1 && currentPage > 1) {
+      await axios.delete(`/api/customers/${customerToDelete.id}`);
+      toast.success(`Pelanggan "${customerToDelete.name}" berhasil dihapus.`);
+      if (customers.length === 1 && currentPage > 1) {
         setCurrentPage(currentPage - 1);
       } else {
-        fetchSuppliers(currentPage, activeSearch);
+        fetchCustomers(currentPage, activeSearch);
       }
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Gagal menghapus supplier.');
+      toast.error(err.response?.data?.msg || 'Gagal menghapus pelanggan.');
     } finally {
       handleCloseConfirmModal();
     }
@@ -122,7 +122,7 @@ function SupplierList() {
       
       {/* Header & Search */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-        <h1 className="text-2xl font-bold text-gray-800">Manajemen Supplier</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Manajemen Pelanggan (Customer)</h1>
         
         {/* Search Bar */}
         <form onSubmit={handleSearchSubmit} className="flex gap-2">
@@ -130,7 +130,7 @@ function SupplierList() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari Nama Supplier..."
+            placeholder="Cari Nama Pelanggan..."
             className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
           />
           <button type="submit" className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded">
@@ -139,9 +139,9 @@ function SupplierList() {
         </form>
         
         {/* Tombol Tambah (Hanya untuk Admin) */}
-        {userRole === 'admin' && (
+        {isAdmin && (
           <button onClick={handleAddClick} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded w-full md:w-auto">
-            + Tambah Supplier
+            + Tambah Pelanggan
           </button>
         )}
       </div>
@@ -155,7 +155,7 @@ function SupplierList() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama Supplier</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama Pelanggan</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact Person</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Telepon</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Alamat</th>
@@ -163,32 +163,32 @@ function SupplierList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {suppliers.map((supplier) => (
-                  <tr key={supplier.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{supplier.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{supplier.contact_person || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{supplier.phone || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{supplier.address || '-'}</td>
+                {customers.map((customer) => (
+                  <tr key={customer.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{customer.name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{customer.contact_person || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{customer.phone || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{customer.address || '-'}</td>
                     
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       {/* Tombol Aksi (Hanya untuk Admin) */}
-                      {userRole === 'admin' && (
+                      {isAdmin && (
                         <>
                           <button 
-                            onClick={() => handleEditClick(supplier)}
+                            onClick={() => handleEditClick(customer)}
                             className="text-indigo-600 hover:text-indigo-900"
                           >
                             Edit
                           </button>
                           <button 
-                            onClick={() => handleDeleteClick(supplier)} 
+                            onClick={() => handleDeleteClick(customer)} 
                             className="text-red-600 hover:text-red-900"
                           >
                             Hapus
                           </button>
                         </>
                       )}
-                      {!userRole || userRole === 'staff' && (
+                      {!isAdmin && (
                           <span className="text-gray-400 text-xs">Lihat saja</span>
                       )}
                     </td>
@@ -215,18 +215,18 @@ function SupplierList() {
 
       {/* Modal Form */}
       {isFormModalOpen && (
-        <SupplierForm 
+        <CustomerForm 
           onClose={handleCloseFormModal}
-          onSave={handleSaveSupplier}
-          supplierToEdit={editingSupplier} 
+          onSave={handleSaveCustomer}
+          customerToEdit={editingCustomer} 
         />
       )}
 
       {/* Modal Konfirmasi Hapus */}
       {isConfirmModalOpen && (
         <ConfirmModal
-          title="Hapus Supplier"
-          message={`Apakah Anda yakin ingin menghapus supplier "${supplierToDelete?.name}"?`}
+          title="Hapus Pelanggan"
+          message={`Apakah Anda yakin ingin menghapus pelanggan "${customerToDelete?.name}"?`}
           onConfirm={handleConfirmDelete}
           onCancel={handleCloseConfirmModal}
         />
@@ -235,4 +235,4 @@ function SupplierList() {
   );
 }
 
-export default SupplierList;
+export default CustomerList;

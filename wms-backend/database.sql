@@ -1,10 +1,38 @@
--- Tabel Products (Barang)
+-- #################################################
+-- # 1. MASTER DATA UTAMA (Harus Didefinisikan Dulu)
+-- #################################################
+
+-- Tabel Suppliers (BARU)
+CREATE TABLE IF NOT EXISTS suppliers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    contact_person VARCHAR(100),
+    phone VARCHAR(50),
+    address TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabel Customers (BARU)
+CREATE TABLE IF NOT EXISTS customers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    contact_person VARCHAR(100),
+    phone VARCHAR(50),
+    address TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabel Products (VERSI UPGRADE dengan Harga)
 CREATE TABLE IF NOT EXISTS products (
     id SERIAL PRIMARY KEY,
     sku VARCHAR(50) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     unit VARCHAR(20),
+    
+    purchase_price NUMERIC(10, 2) DEFAULT 0.00, -- BARU: Harga Beli
+    selling_price NUMERIC(10, 2) DEFAULT 0.00,  -- BARU: Harga Jual
+    
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -15,13 +43,19 @@ CREATE TABLE IF NOT EXISTS locations (
     description TEXT
 );
 
--- Tabel Transactions (VERSI UPGRADE)
+-- #################################################
+-- # 2. TABEL TRANSAKSI & STOK (Merujuk Master Data)
+-- #################################################
+
+-- Tabel Transactions (VERSI UPGRADE dengan customer_id & supplier_id)
 CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
     type VARCHAR(10) CHECK (type IN ('IN', 'OUT')) NOT NULL,
     date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     notes TEXT,
-    supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL -- INI BARIS BARU
+    -- Foreign Keys (Sekarang sudah aman karena tabel di atasnya sudah didefinisikan)
+    supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL, 
+    customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL 
 );
 
 -- Tabel Transaction Items (Detail Barang per Transaksi)
@@ -41,19 +75,16 @@ CREATE TABLE IF NOT EXISTS stock_levels (
     PRIMARY KEY (product_id, location_id)
 );
 
+
+-- #################################################
+-- # 3. TABEL SISTEM
+-- #################################################
+
 -- Tabel Users (BARU UNTUK AUTENTIKASI)
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
--- Tabel Suppliers (BARU)
-CREATE TABLE IF NOT EXISTS suppliers (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL,
-    contact_person VARCHAR(100),
-    phone VARCHAR(50),
-    address TEXT,
+    role VARCHAR(50) DEFAULT 'staff',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -1,65 +1,67 @@
 import { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 
-// --- PERBAIKAN DIMULAI DI SINI ---
-// Kita baca localStorage dan pasang header SEKARANG (di luar komponen)
-// Ini menjamin header sudah terpasang sebelum API manapun dipanggil
+// Helper function untuk decode JWT dan mengambil role
+const getRoleFromToken = (token) => {
+  try {
+    const payload = token.split('.')[1];
+    const decodedPayload = JSON.parse(atob(payload)); // atob untuk base64 decode
+    return decodedPayload.user.role; // Mengambil role yang kita masukkan di backend
+  } catch (e) {
+    return null;
+  }
+};
+
+// --- Perbaikan untuk mencegah race condition (wajib di luar komponen) ---
 const initialToken = localStorage.getItem('token');
 if (initialToken) {
   axios.defaults.headers.common['x-auth-token'] = initialToken;
 }
-// --- PERBAIKAN SELESAI ---
+// --- Selesai Perbaikan ---
 
-// 1. Buat "wadah" context-nya
 const AuthContext = createContext(null);
 
-// 2. Buat "Penyedia" (Provider)
 export function AuthProvider({ children }) {
-  // Gunakan token yang sudah kita baca tadi sebagai state awal
   const [token, setToken] = useState(initialToken || null);
+  const [userRole, setUserRole] = useState(getRoleFromToken(initialToken) || null); // <-- STATE USER ROLE
 
-  // useEffect ini sekarang HANYA bertugas saat login (token baru) atau logout (token null)
   useEffect(() => {
     if (token) {
-      // Ini berjalan saat kita dapat token BARU dari login
       localStorage.setItem('token', token);
       axios.defaults.headers.common['x-auth-token'] = token;
+      setUserRole(getRoleFromToken(token)); // Set role saat token baru datang
     } else {
-      // Ini berjalan saat kita logout
       localStorage.removeItem('token');
       delete axios.defaults.headers.common['x-auth-token'];
+      setUserRole(null); // Reset role saat logout
     }
-  }, [token]); // Hanya berjalan saat 'token' berubah
+  }, [token]);
 
-  // Fungsi untuk login
   const login = async (username, password) => {
     try {
       const res = await axios.post('/api/auth/login', { username, password });
-      setToken(res.data.token); // Simpan token ke state, ini akan memicu useEffect
+      setToken(res.data.token);
       return true;
     } catch (err) {
-      console.error("Login gagal:", err);
       throw err;
     }
   };
 
-  // Fungsi untuk logout
   const logout = () => {
-    setToken(null); // Hapus token dari state, ini akan memicu useEffect
+    setToken(null);
   };
 
-  // Kirim nilai-nilai ini ke semua komponen di bawahnya
   const value = {
     token,
     login,
     logout,
-    isAuthenticated: !!token // (true jika ada token, false jika null)
+    isAuthenticated: !!token,
+    userRole // <-- KIRIM ROLE KE SEMUA KOMPONEN
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// 3. Buat "Hook"
 export function useAuth() {
   return useContext(AuthContext);
 }

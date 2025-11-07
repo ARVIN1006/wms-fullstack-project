@@ -6,7 +6,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import { useAuth } from "./context/AuthContext"; // <-- 1. Impor useAuth
+import { useAuth } from "./context/AuthContext"; 
 
 // Halaman
 import Navbar from "./components/Navbar";
@@ -16,11 +16,15 @@ import TransactionForm from "./pages/TransactionForm";
 import Reports from "./pages/Reports";
 import LoginPage from "./pages/Login";
 import SupplierList from "./pages/SupplierList";
+import AdminControl from './pages/AdminControl';
+import Profile from './pages/Profile';
+import LocationList from './pages/LocationList';
+import CustomerList from './pages/CustomerList';
+
 
 function MainLayout() {
-  const { isAuthenticated } = useAuth(); 
+  const { isAuthenticated } = useAuth();
   if (!isAuthenticated) {
-    // Jika mencoba akses tapi belum login, tendang ke login
     return <Navigate to="/login" replace />;
   }
 
@@ -28,13 +32,11 @@ function MainLayout() {
     <div className="min-h-screen bg-gray-100">
       <Navbar />
       <div className="container mx-auto py-6">
-        {/* <Outlet /> akan merender halaman anak (Dashboard, Produk, dll.) */}
         <Outlet />
       </div>
     </div>
   );
 }
-
 
 function PublicLayout() {
   const { isAuthenticated } = useAuth();
@@ -43,7 +45,7 @@ function PublicLayout() {
     return <Navigate to="/" replace />;
   }
 
-  return <Outlet />; 
+  return <Outlet />;
 }
 
 function App() {
@@ -63,7 +65,11 @@ function App() {
           <Route path="/products" element={<ProductList />} />
           <Route path="/suppliers" element={<SupplierList />} />
           <Route path="/transactions" element={<TransactionForm />} />
+          <Route path="/locations" element={<LocationList />} />
+          <Route path="/customers" element={<CustomerList />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/admin" element={<AdminControl />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
       </Routes>
     </Router>

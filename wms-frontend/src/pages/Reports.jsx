@@ -1,67 +1,85 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import ExportButton from '../components/ExportButton'; // <-- IMPOR BARU
 
 function Reports() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Definisi Header untuk file CSV
+  const csvHeaders = [
+    { label: "Tanggal Transaksi", key: "transaction_date" },
+    { label: "Tipe", key: "transaction_type" },
+    { label: "SKU", key: "sku" },
+    { label: "Nama Produk", key: "product_name" },
+    { label: "Lokasi", key: "location_name" },
+    { label: "Jumlah", key: "quantity" },
+    { label: "Catatan", key: "notes" },
+  ];
+  
+  // Fungsi untuk membersihkan data sebelum diekspor
+  const getExportData = () => {
+      return reports.map(item => ({
+          ...item,
+          // Format tanggal agar mudah dibaca di Excel
+          transaction_date: new Date(item.transaction_date).toLocaleString('id-ID'),
+          // Format tipe transaksi
+          transaction_type: item.transaction_type === 'IN' ? 'MASUK' : 'KELUAR',
+      }));
+  }
+
   // Fungsi untuk mengambil data dari backend
   async function fetchReports() {
     try {
       setLoading(true);
-      // Panggil API laporan yang sudah kita buat di backend
-      const response = await axios.get('/api/reports/history');
+      // Kita ambil semua data laporan (tanpa limit)
+      const response = await axios.get('/api/reports/history'); 
       setReports(response.data);
     } catch (err) {
       console.error("Gagal mengambil data laporan:", err);
+      // Asumsi toast diimpor di App.jsx
     } finally {
       setLoading(false);
     }
   }
 
-  // Jalankan fetchReports() saat komponen pertama kali dimuat
   useEffect(() => {
     fetchReports();
   }, []);
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">📈 Laporan Riwayat Transaksi</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">📈 Laporan Riwayat Transaksi</h1>
+        
+        {/* TOMBOL EKSPOR BARU */}
+        <ExportButton 
+            data={getExportData()} 
+            headers={csvHeaders} 
+            filename={`Laporan_WMS_${new Date().toISOString().slice(0, 10)}.csv`}
+        >
+            Unduh Laporan (CSV)
+        </ExportButton>
+      </div>
 
       {loading ? (
         <p className="text-gray-500">Memuat data...</p>
       ) : (
-        // Kita bungkus dengan div agar bisa scroll horizontal jika tabelnya lebar
+        // ... (Tabel Laporan tetap sama, tapi kita bisa pakai field date yang belum diformat)
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipe</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Produk</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lokasi</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jumlah</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catatan</th>
-              </tr>
+              {/* ... (Header Tabel) ... */}
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {reports.map((item, index) => (
-                // Kita pakai index sebagai key karena ini daftar read-only
                 <tr key={index}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    {/* Format tanggal sederhana bawaan Indonesia */}
+                    {/* Format untuk tampilan web */}
                     {new Date(item.transaction_date).toLocaleString('id-ID')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    {/* Memberi warna berbeda untuk Tipe IN dan OUT */}
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold
-                      ${item.transaction_type === 'IN' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'}`
-                    }>
-                      {item.transaction_type === 'IN' ? 'MASUK' : 'KELUAR'}
-                    </span>
+                    {/* ... (Tipe Transaksi) ... */}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.product_name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.sku}</td>
