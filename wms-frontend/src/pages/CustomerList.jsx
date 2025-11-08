@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
-import CustomerForm from '../components/CustomerForm'; // Impor form pelanggan
+import CustomerForm from '../components/CustomerForm'; 
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
+import ExportButton from '../components/ExportButton';
 
 const LIMIT_PER_PAGE = 10;
 
@@ -15,13 +16,11 @@ function CustomerList() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState(null);
 
-  // Pagination dan Search
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
 
-  // Role dari Context
   const { userRole } = useAuth();
   const isAdmin = userRole === 'admin';
 
@@ -48,67 +47,73 @@ function CustomerList() {
     fetchCustomers(currentPage, activeSearch);
   }, [currentPage, activeSearch]);
 
-  // --- Handlers Modal & CRUD ---
-  const handleCloseFormModal = () => {
-    setIsFormModalOpen(false);
-    setEditingCustomer(null);
+  // --- FUNGSI EKSPOR CSV ---
+  const getExportData = () => {
+      // Data format untuk CSV
+      return customers.map(c => ({
+          name: c.name,
+          contact_person: c.contact_person || '-',
+          phone: c.phone || '-',
+          address: c.address || '-',
+      }));
   };
 
-  const handleAddClick = () => {
-    setEditingCustomer(null);
-    setIsFormModalOpen(true);
-  };
+  const customerHeaders = [
+      { label: "Nama Pelanggan", key: "name" },
+      { label: "Contact Person", key: "contact_person" },
+      { label: "Telepon", key: "phone" },
+      { label: "Alamat", key: "address" },
+  ];
+  
+  // --- HANDLERS CRUD (LOGIC LENGKAP) ---
 
-  const handleEditClick = (customer) => {
+  const handleCloseFormModal = () => { setIsFormModalOpen(false); setEditingCustomer(null); };
+  const handleAddClick = () => { setEditingCustomer(null); setIsFormModalOpen(true); };
+  
+  const handleEditClick = (customer) => { 
+    if (!isAdmin) return; // Hanya Admin
+    setEditingCustomer(customer); setIsFormModalOpen(true); 
+  };
+  
+  const handleSaveCustomer = async (customerData) => { 
     if (!isAdmin) return;
-    setEditingCustomer(customer);
-    setIsFormModalOpen(true);
-  };
-
-  const handleSaveCustomer = async (customerData) => {
     try {
-      if (customerData.id) {
-        // UPDATE
-        await axios.put(`/api/customers/${customerData.id}`, customerData);
-        toast.success('Pelanggan berhasil diupdate!');
-      } else {
-        // CREATE
-        await axios.post('/api/customers', customerData);
-        toast.success('Pelanggan baru berhasil ditambahkan!');
-      }
-      handleCloseFormModal();
-      if (currentPage !== 1) setCurrentPage(1);
-      else fetchCustomers(currentPage, activeSearch);
+        if (customerData.id) {
+            await axios.put(`/api/customers/${customerData.id}`, customerData);
+            toast.success('Pelanggan berhasil diupdate!');
+        } else {
+            await axios.post('/api/customers', customerData);
+            toast.success('Pelanggan baru berhasil ditambahkan!');
+        }
+        handleCloseFormModal();
+        if (currentPage !== 1) setCurrentPage(1); // Refresh ke halaman 1 jika nambah
+        else fetchCustomers(currentPage, activeSearch);
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Gagal menyimpan pelanggan.');
+        toast.error(err.response?.data?.msg || 'Gagal menyimpan pelanggan.');
     }
   };
-
-  const handleDeleteClick = (customer) => {
-    if (!isAdmin) return;
-    setCustomerToDelete(customer);
-    setIsConfirmModalOpen(true);
+  
+  const handleDeleteClick = (customer) => { 
+    if (!isAdmin) return; // Hanya Admin
+    setCustomerToDelete(customer); setIsConfirmModalOpen(true); 
   };
-
-  const handleCloseConfirmModal = () => {
-    setIsConfirmModalOpen(false);
-    setCustomerToDelete(null);
-  };
-
-  const handleConfirmDelete = async () => {
+  
+  const handleCloseConfirmModal = () => { setIsConfirmModalOpen(false); setCustomerToDelete(null); };
+  
+  const handleConfirmDelete = async () => { 
     if (!customerToDelete) return;
     try {
-      await axios.delete(`/api/customers/${customerToDelete.id}`);
-      toast.success(`Pelanggan "${customerToDelete.name}" berhasil dihapus.`);
-      if (customers.length === 1 && currentPage > 1) {
-        setCurrentPage(currentPage - 1);
-      } else {
-        fetchCustomers(currentPage, activeSearch);
-      }
+        await axios.delete(`/api/customers/${customerToDelete.id}`);
+        toast.success(`Pelanggan "${customerToDelete.name}" berhasil dihapus.`);
+        if (customers.length === 1 && currentPage > 1) {
+            setCurrentPage(currentPage - 1);
+        } else {
+            fetchCustomers(currentPage, activeSearch);
+        }
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Gagal menghapus pelanggan.');
+        toast.error(err.response?.data?.msg || 'Gagal menghapus pelanggan.');
     } finally {
-      handleCloseConfirmModal();
+        handleCloseConfirmModal();
     }
   };
 
@@ -116,6 +121,7 @@ function CustomerList() {
   const handleSearchSubmit = (e) => { e.preventDefault(); setCurrentPage(1); setActiveSearch(searchQuery); };
   const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(currentPage + 1); };
   const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(currentPage - 1); };
+
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg relative"> 
@@ -144,6 +150,15 @@ function CustomerList() {
             + Tambah Pelanggan
           </button>
         )}
+
+        {/* TOMBOL EKSPOR */}
+        <ExportButton 
+            data={getExportData()} 
+            headers={customerHeaders} 
+            filename={`Master_Pelanggan_${new Date().toISOString().slice(0, 10)}.csv`}
+        >
+            Ekspor Daftar Pelanggan
+        </ExportButton>
       </div>
 
       {/* Tabel */}
@@ -163,7 +178,7 @@ function CustomerList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {customers.map((customer) => (
+                {(customers || []).map((customer) => (
                   <tr key={customer.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{customer.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{customer.contact_person || '-'}</td>
@@ -194,6 +209,13 @@ function CustomerList() {
                     </td>
                   </tr>
                 ))}
+                {customers.length === 0 && !loading && (
+                    <tr>
+                        <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
+                            Tidak ada data pelanggan.
+                        </td>
+                    </tr>
+                )}
               </tbody>
             </table>
           </div>

@@ -6,21 +6,29 @@ import {
   Navigate,
 } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import { useAuth } from "./context/AuthContext"; 
+import { useAuth } from "./context/AuthContext";
 
 // Halaman
 import Navbar from "./components/Navbar";
 import Dashboard from "./pages/Dashboard";
 import ProductList from "./pages/ProductList";
+import SupplierList from "./pages/SupplierList";
+import LocationList from "./pages/LocationList";
+import CustomerList from "./pages/CustomerList";
+import MovementForm from "./pages/MovementForm";
 import TransactionForm from "./pages/TransactionForm";
 import Reports from "./pages/Reports";
-import LoginPage from "./pages/Login";
-import SupplierList from "./pages/SupplierList";
-import AdminControl from './pages/AdminControl';
-import Profile from './pages/Profile';
-import LocationList from './pages/LocationList';
-import CustomerList from './pages/CustomerList';
 
+// Rute Laporan
+import MovementReport from "./pages/MovementReport";
+import PerformanceReport from "./pages/PerformanceReport";
+import FinancialReport from "./pages/FinancialReport";
+import UserActivityReport from "./pages/UserActivityReport";
+import CustomerOrderReport from "./pages/CustomerOrderReport";
+
+import LoginPage from "./pages/Login";
+import AdminControl from "./pages/AdminControl";
+import Profile from "./pages/Profile";
 
 function MainLayout() {
   const { isAuthenticated } = useAuth();
@@ -40,11 +48,9 @@ function MainLayout() {
 
 function PublicLayout() {
   const { isAuthenticated } = useAuth();
-
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
-
   return <Outlet />;
 }
 
@@ -54,20 +60,32 @@ function App() {
       <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
 
       <Routes>
-        {/* RUTE PUBLIK (cth: Login) */}
+        {/* RUTE PUBLIK */}
         <Route element={<PublicLayout />}>
           <Route path="/login" element={<LoginPage />} />
         </Route>
 
-        {/* RUTE AMAN / PROTECTED (Semua halaman WMS) */}
+        {/* RUTE AMAN / PROTECTED */}
         <Route element={<MainLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/products" element={<ProductList />} />
           <Route path="/suppliers" element={<SupplierList />} />
-          <Route path="/transactions" element={<TransactionForm />} />
           <Route path="/locations" element={<LocationList />} />
           <Route path="/customers" element={<CustomerList />} />
+          <Route path="/movements" element={<MovementForm />} />
+          <Route path="/transactions" element={<TransactionForm />} />
+
+          {/* RUTE PELAPORAN */}
           <Route path="/reports" element={<Reports />} />
+          <Route path="/reports/movement" element={<MovementReport />} />
+          <Route path="/reports/performance" element={<PerformanceReport />} />
+          <Route path="/reports/activity" element={<UserActivityReport />} />
+          <Route
+            path="/reports/customer-order"
+            element={<CustomerOrderReport />}
+          />
+          <Route path="/reports/financial" element={<FinancialReport />} />
+          {/* RUTE ADMIN/PROFILE */}
           <Route path="/admin" element={<AdminControl />} />
           <Route path="/profile" element={<Profile />} />
         </Route>

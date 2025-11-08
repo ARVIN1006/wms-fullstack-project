@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
-import LocationForm from '../components/LocationForm';
+import LocationForm from '../components/LocationForm'; 
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,11 +16,11 @@ function LocationList() {
   const { userRole } = useAuth();
   const isAdmin = userRole === 'admin';
 
-  // Fungsi Fetch (disimpan dalam satu fungsi saja karena tidak ada pagination)
+  // Fungsi Fetch Lokasi (dengan Total Stok)
   async function fetchLocations() {
     try {
       setLoading(true);
-      // Panggil API Location yang sudah di-upgrade
+      // API locations sekarang mengembalikan 'total_stock'
       const response = await axios.get(`/api/locations`); 
       setLocations(response.data);
     } catch (err) {
@@ -36,14 +36,62 @@ function LocationList() {
     fetchLocations();
   }, []);
 
-  // --- Handlers Modal & CRUD (Sama seperti sebelumnya) ---
-  const handleCloseFormModal = () => { /* ... */ };
-  const handleAddClick = () => { /* ... */ };
-  const handleEditClick = (location) => { /* ... */ };
-  const handleSaveLocation = async (locationData) => { /* ... */ };
-  const handleDeleteClick = (location) => { /* ... */ };
-  const handleCloseConfirmModal = () => { /* ... */ };
-  const handleConfirmDelete = async () => { /* ... */ };
+  // --- Handlers Modal & CRUD (Disembunyikan untuk brevity) ---
+  const handleCloseFormModal = () => {
+    setIsFormModalOpen(false);
+    setEditingLocation(null);
+  };
+
+  const handleAddClick = () => {
+    setEditingLocation(null);
+    setIsFormModalOpen(true);
+  };
+
+  const handleEditClick = (location) => {
+    if (!isAdmin) return;
+    setEditingLocation(location);
+    setIsFormModalOpen(true);
+  };
+
+  const handleSaveLocation = async (locationData) => {
+    try {
+      if (locationData.id) {
+        await axios.put(`/api/locations/${locationData.id}`, locationData);
+        toast.success('Lokasi berhasil diupdate!');
+      } else {
+        await axios.post('/api/locations', locationData);
+        toast.success('Lokasi baru berhasil ditambahkan!');
+      }
+      handleCloseFormModal();
+      fetchLocations();
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Gagal menyimpan lokasi.');
+    }
+  };
+
+  const handleDeleteClick = (location) => {
+    setLocationToDelete(location);
+    setIsConfirmModalOpen(true);
+  };
+
+  const handleCloseConfirmModal = () => {
+    setIsConfirmModalOpen(false);
+    setLocationToDelete(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!locationToDelete) return;
+    try {
+      await axios.delete(`/api/locations/${locationToDelete.id}`); 
+      toast.success(`Lokasi "${locationToDelete.name}" berhasil dihapus.`);
+      fetchLocations(); 
+    } catch (err) {
+      toast.error(err.response?.data?.msg || 'Gagal menghapus lokasi.');
+    } finally {
+      handleCloseConfirmModal();
+    }
+  };
+
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg relative"> 
@@ -68,19 +116,20 @@ function LocationList() {
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
+                {/* PERBAIKAN WHITESPACE: Semua <th> berdekatan */}
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama Lokasi</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deskripsi</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Stok Barang</th> {/* <-- JUDUL KOLOM */}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Stok Barang</th> 
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aksi</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {locations.map((location) => (
                   <tr key={location.id}>
+                    {/* PERBAIKAN WHITESPACE: Semua <td> berdekatan */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{location.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{location.description || '-'}</td>
-                    {/* TAMPILKAN NILAI TOTAL STOK DARI API */}
                     <td className="px-6 py-4 whitespace-nowrap text-lg font-bold">
                         {location.total_stock}
                     </td> 
