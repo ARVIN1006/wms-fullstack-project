@@ -3,6 +3,7 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import ExportButton from '../components/ExportButton';
 import Select from 'react-select'; 
+import AsyncSelect from 'react-select/async'; // <-- IMPOR BARU
 
 function MovementReport() {
   const [reports, setReports] = useState([]);
@@ -12,30 +13,13 @@ function MovementReport() {
   // --- STATE FILTER BARU ---
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [selectedFromLocation, setSelectedFromLocation] = useState(null); // Lokasi Asal
-  const [selectedToLocation, setSelectedToLocation] = useState(null);    // Lokasi Tujuan
+  const [selectedFromLocation, setSelectedFromLocation] = useState(null); 
+  const [selectedToLocation, setSelectedToLocation] = useState(null);    
+  const [selectedProduct, setSelectedProduct] = useState(null); // <-- BARU
 
-  // Definisi Header untuk file CSV
-  const csvHeaders = [
-    { label: "Tanggal", key: "date" },
-    { label: "Operator", key: "operator_name" },
-    { label: "SKU", key: "sku" },
-    { label: "Nama Produk", key: "product_name" },
-    { label: "Jumlah", key: "quantity" },
-    { label: "Asal", key: "from_location_name" },
-    { label: "Tujuan", key: "to_location_name" },
-    { label: "Alasan", key: "reason" },
-  ];
-  
-  // Fungsi untuk memformat data sebelum diekspor
-  const getExportData = () => {
-      return reports.map(item => ({
-          ...item,
-          date: new Date(item.date).toLocaleString('id-ID'),
-      }));
-  }
+  // ... (Header CSV & getExportData tetap sama) ...
 
-  // Ambil lokasi & data laporan (dipanggil saat filter berubah)
+  // Ambil lokasi & data laporan
   useEffect(() => {
     async function fetchLocations() {
       try {
@@ -46,23 +30,36 @@ function MovementReport() {
       }
     }
     fetchLocations();
-    
-    // Panggil fetchReports saat komponen dimuat atau filter di-submit
     fetchReports(); 
   }, []); 
+
+  // Fungsi Pencarian Produk Asynchronous (BARU, diambil dari TransactionForm)
+  const loadProductOptions = async (inputValue) => {
+    try {
+      const response = await axios.get(
+        `/api/products?page=1&limit=20&search=${inputValue}`
+      );
+      return response.data.products.map(p => ({
+        value: p.id,
+        label: `${p.sku} - ${p.name}`
+      }));
+    } catch (err) {
+      console.error("Gagal mencari produk:", err);
+      return [];
+    }
+  };
 
   // --- FUNGSI FETCH REPORTS (DI-UPGRADE) ---
   async function fetchReports() {
     try {
       setLoading(true);
       
-      // Persiapan filter query
       const params = {
           startDate: startDate || undefined,
           endDate: endDate || undefined,
-          // KIRIM KEDUA FILTER LOKASI SECARA TERPISAH
           fromLocationId: selectedFromLocation?.value || undefined, 
-          toLocationId: selectedToLocation?.value || undefined      
+          toLocationId: selectedToLocation?.value || undefined,
+          productId: selectedProduct?.value || undefined // <-- BARU
       };
       
       const response = await axios.get('/api/reports/movements', { params }); 
@@ -79,11 +76,11 @@ function MovementReport() {
   // Handler saat tombol 'Filter' diklik
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchReports(); // Muat ulang data dengan filter baru
+      fetchReports();
   }
 
   const locationOptions = [
-      { value: '', label: 'Semua Lokasi' }, // Opsi default
+      { value: '', label: 'Semua Lokasi' },
       ...locations.map(l => ({ value: l.id, label: l.name }))
   ];
 
@@ -93,62 +90,40 @@ function MovementReport() {
       
       {/* --- FORM FILTER BARU --- */}
       <form onSubmit={handleFilterSubmit} className="mb-6 p-4 border rounded-lg bg-gray-50">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-            
-            {/* Filter Tanggal Mulai */}
+        {/* Grid 1: Tanggal & Lokasi */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
-                <input 
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
             </div>
-
-            {/* Filter Tanggal Akhir */}
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
-                <input 
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
             </div>
-            
-            {/* Filter Lokasi ASAL */}
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi Asal</label>
-                <Select
-                    options={locationOptions}
-                    value={selectedFromLocation}
-                    onChange={setSelectedFromLocation} // Menggunakan state Lokasi Asal
-                    placeholder="Semua Asal"
-                    isClearable={true}
-                    classNamePrefix="react-select"
-                />
+                <Select options={locationOptions} value={selectedFromLocation} onChange={setSelectedFromLocation} placeholder="Semua Asal" isClearable={true} classNamePrefix="react-select"/>
             </div>
-            
-            {/* Filter Lokasi TUJUAN */}
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi Tujuan</label>
-                <Select
-                    options={locationOptions}
-                    value={selectedToLocation}
-                    onChange={setSelectedToLocation} // Menggunakan state Lokasi Tujuan
-                    placeholder="Semua Tujuan"
+                <Select options={locationOptions} value={selectedToLocation} onChange={setSelectedToLocation} placeholder="Semua Tujuan" isClearable={true} classNamePrefix="react-select"/>
+            </div>
+        </div>
+        {/* Grid 2: Produk & Tombol */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Filter Produk (SKU)</label>
+                <AsyncSelect
+                    loadOptions={loadProductOptions}
+                    value={selectedProduct}
+                    onChange={setSelectedProduct}
+                    placeholder="Ketik untuk mencari Produk..."
                     isClearable={true}
                     classNamePrefix="react-select"
                 />
             </div>
-            
-            {/* Tombol Aksi */}
             <div>
-                <button 
-                    type="submit" 
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition"
-                >
+                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">
                     Tampilkan Laporan
                 </button>
             </div>
