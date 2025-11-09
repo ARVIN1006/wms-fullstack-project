@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
-import ExportButton from '../components/ExportButton'; 
+import ExportButton from '../components/ExportButton';
 
 const formatCurrency = (amount) => {
     return `Rp ${parseFloat(amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -14,21 +14,28 @@ function CustomerOrderReport() {
   });
   const [loading, setLoading] = useState(true);
 
-  // --- STATE FILTER BARU ---
+  // --- STATE FILTER ---
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   
-  async function fetchReports() {
+  // --- FUNGSI FETCH UTAMA ---
+  async function fetchReports(isFilterSubmit = false) {
     try {
       setLoading(true);
       
-      // Kirim filter ke API
+      // Validasi: Jika ini adalah submit filter, tanggal wajib diisi
+      if (isFilterSubmit && (!startDate || !endDate)) {
+          toast.error('Harap isi Tanggal Mulai dan Sampai Tanggal untuk filter.');
+          setLoading(false);
+          return;
+      }
+      
       const params = {
           startDate: startDate || undefined,
           endDate: endDate || undefined
       };
       
-      const response = await axios.get('/api/reports/customer-order', { params }); 
+      const response = await axios.get('/api/reports/customer-order', { params });
       setReportData(response.data);
     } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
@@ -39,14 +46,16 @@ function CustomerOrderReport() {
     }
   }
 
-  // Panggil fetchReports() setiap kali state filter berubah
+  // PERBAIKAN: Hapus [startDate, endDate] dari dependency array.
+  // useEffect ini sekarang HANYA berjalan sekali saat halaman dibuka.
   useEffect(() => {
-    fetchReports();
-  }, [startDate, endDate]); 
+    fetchReports(false); // Panggil tanpa flag filter
+  }, []); 
 
+  // Handler ini sekarang menjadi satu-satunya cara memanggil fetchReports DENGAN filter
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchReports(); // Muat ulang data dengan filter baru
+      fetchReports(true); // Panggil dengan flag filter = true
   }
 
   if (loading) {
@@ -55,14 +64,14 @@ function CustomerOrderReport() {
 
   const { customerSummary, topSellingProducts } = reportData;
 
-  // Header CSV untuk Ringkasan Pelanggan
+  // Header CSV (Sama)
   const customerReportHeaders = [
       { label: "Pelanggan", key: "customer_name" },
       { label: "Total Order", key: "total_orders" },
       { label: "Total Revenue (Rp)", key: "total_revenue" },
   ];
 
-  // Fungsi untuk memformat data sebelum diekspor
+  // Fungsi Ekspor (Sama)
   const getExportData = () => {
       return reportData.customerSummary.map(item => ({
           customer_name: item.customer_name,
@@ -94,7 +103,6 @@ function CustomerOrderReport() {
             </div>
         </div>
       </form>
-
 
       {/* Bagian 1: Produk Terlaris Global */}
       <h2 className="text-xl font-semibold mb-3">Produk Terlaris Global (Top 5)</h2>

@@ -2,16 +2,28 @@ const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
 const auth = require("../middleware/auth");
-const authorize = require("../middleware/role");
+const authorize = require("../middleware/role"); // Perbaikan typo require
 
-// Middleware: Hanya Admin yang boleh melihat semua laporan
+// ====================================================
+// FUNGSI VALIDASI TAMBAHAN
+// ====================================================
+function isValidDate(date) {
+  return date instanceof Date && !isNaN(date);
+}
 
-// ===============================================
-// 1. RUTE EXCEPTION (DIPERLUKAN STAFF/MASTER DATA)
-// ===============================================
+function validateDateRange(start, end, res) {
+  if ((start && !isValidDate(start)) || (end && !isValidDate(end))) {
+    res.status(400).send("Format tanggal tidak valid.");
+    return false;
+  }
+  return true;
+}
 
-// GET /api/reports/stock-statuses - Mendapatkan semua status stok (Wajib untuk TransactionForm)
-// Mengizinkan Admin dan Staff
+// ====================================================
+// 1. RUTE EXCEPTION (WAJIB STAFF/MASTER DATA)
+// ====================================================
+
+// GET /api/reports/stock-statuses
 router.get(
   "/stock-statuses",
   auth,
@@ -29,7 +41,7 @@ router.get(
   }
 );
 
-// GET /api/reports/recent-activity (Wajib untuk Dashboard)
+// GET /api/reports/recent-activity
 router.get(
   "/recent-activity",
   auth,
@@ -37,15 +49,15 @@ router.get(
   async (req, res) => {
     try {
       const query = `
-          SELECT 
-            t.id, t.date as transaction_date, t.type as transaction_type, ti.quantity,
-            p.name as product_name, p.sku
-          FROM transaction_items ti
-          JOIN transactions t ON ti.transaction_id = t.id
-          JOIN products p ON ti.product_id = p.id
-          ORDER BY t.date DESC
-          LIMIT 5;
-        `;
+      SELECT 
+        t.id, t.date AS transaction_date, t.type AS transaction_type, ti.quantity,
+        p.name AS product_name, p.sku
+      FROM transaction_items ti
+      JOIN transactions t ON ti.transaction_id = t.id
+      JOIN products p ON ti.product_id = p.id
+      ORDER BY t.date DESC
+      LIMIT 5;
+    `;
       const result = await db.query(query);
       res.json(result.rows);
     } catch (err) {
@@ -54,17 +66,21 @@ router.get(
     }
   }
 );
+
+// Middleware: Hanya Admin yang boleh melihat semua laporan utama
 router.use(auth, authorize(["admin"]));
 
-// ===============================================
-// 2. Laporan Riwayat Transaksi (History - IN/OUT)
-// ===============================================
-
-// GET /api/reports/history - Laporan Transaksi LENGKAP DENGAN FILTER
+// ====================================================
+// 2. LAPORAN RIWAYAT TRANSAKSI (HISTORY)
+// ====================================================
 router.get("/history", async (req, res) => {
   try {
     const { limit, type, supplierId, customerId, startDate, endDate } =
       req.query;
+
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    if (!validateDateRange(start, end, res)) return;
 
     let query = `
       SELECT 
@@ -92,56 +108,45 @@ router.get("/history", async (req, res) => {
     `;
 
     let whereClauses = [];
-    let queryParams = [];
-    let paramIndex = 0;
+    let params = [];
+    let i = 0;
 
-    // Filter 1: Tipe Transaksi
     if (type) {
-      paramIndex++;
-      whereClauses.push(`t.type = $${paramIndex}`);
-      queryParams.push(type);
+      i++;
+      whereClauses.push(`t.type = $${i}`);
+      params.push(type);
     }
-
-    // Filter 2: Supplier
     if (supplierId) {
-      paramIndex++;
-      whereClauses.push(`t.supplier_id = $${paramIndex}`);
-      queryParams.push(parseInt(supplierId));
+      i++;
+      whereClauses.push(`t.supplier_id = $${i}`);
+      params.push(supplierId);
     }
-
-    // Filter 3: Customer
     if (customerId) {
-      paramIndex++;
-      whereClauses.push(`t.customer_id = $${paramIndex}`);
-      queryParams.push(parseInt(customerId));
+      i++;
+      whereClauses.push(`t.customer_id = $${i}`);
+      params.push(customerId);
     }
-
-    // Filter 4: Tanggal
-    if (startDate && endDate) {
-      paramIndex++;
-      whereClauses.push(`t.date >= $${paramIndex}`);
-      queryParams.push(new Date(startDate));
-
-      paramIndex++;
-      const end = new Date(endDate);
+    if (start) {
+      i++;
+      whereClauses.push(`t.date >= $${i}`);
+      params.push(start);
+    }
+    if (end) {
+      i++;
       end.setDate(end.getDate() + 1);
-      whereClauses.push(`t.date < $${paramIndex}`);
-      queryParams.push(end);
+      whereClauses.push(`t.date < $${i}`);
+      params.push(end);
     }
 
-    // Gabungkan filter
-    if (whereClauses.length > 0) {
+    if (whereClauses.length > 0)
       query += ` WHERE ${whereClauses.join(" AND ")}`;
-    }
-
     query += ` ORDER BY t.date DESC`;
-
     if (limit) {
-      queryParams.push(parseInt(limit));
-      query += ` LIMIT $${queryParams.length}`;
+      params.push(parseInt(limit));
+      query += ` LIMIT $${params.length}`;
     }
 
-    const result = await db.query(query, queryParams);
+    const result = await db.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error("ERROR IN /history:", err.message);
@@ -149,14 +154,17 @@ router.get("/history", async (req, res) => {
   }
 });
 
-// ===============================================
-// 3. Laporan Perpindahan Barang (Movement Report)
-// ===============================================
-
-// GET /api/reports/movements - Laporan Perpindahan Barang (DENGAN FILTER)
-router.get('/movements', async (req, res) => {
+// ====================================================
+// 3. LAPORAN PERPINDAHAN BARANG (MOVEMENT)
+// ====================================================
+router.get("/movements", async (req, res) => {
   try {
-    const { startDate, endDate, fromLocationId, toLocationId, productId } = req.query; 
+    const { startDate, endDate, fromLocationId, toLocationId, productId } =
+      req.query;
+
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    if (!validateDateRange(start, end, res)) return;
 
     let query = `
       SELECT 
@@ -168,54 +176,53 @@ router.get('/movements', async (req, res) => {
       JOIN locations uf ON m.from_location_id = uf.id 
       JOIN locations ut ON m.to_location_id = ut.id
     `;
-    
+
     let whereClauses = [];
-    let queryParams = [];
-    let paramIndex = 0;
+    let params = [];
+    let i = 0;
 
-    // Filter 1: Tanggal
-    if (startDate && endDate) {
-        paramIndex++; whereClauses.push(`m.date >= $${paramIndex}`); queryParams.push(new Date(startDate));
-        paramIndex++; const end = new Date(endDate); end.setDate(end.getDate() + 1); 
-        whereClauses.push(`m.date < $${paramIndex}`); queryParams.push(end);
+    if (start) {
+      i++;
+      whereClauses.push(`m.date >= $${i}`);
+      params.push(start);
     }
-    
-    // Filter 2: Lokasi ASAL
+    if (end) {
+      i++;
+      end.setDate(end.getDate() + 1);
+      whereClauses.push(`m.date < $${i}`);
+      params.push(end);
+    }
     if (fromLocationId) {
-        paramIndex++; whereClauses.push(`m.from_location_id = $${paramIndex}`); 
-        queryParams.push(parseInt(fromLocationId));
+      i++;
+      whereClauses.push(`m.from_location_id = $${i}`);
+      params.push(fromLocationId);
     }
-    
-    // Filter 3: Lokasi TUJUAN
     if (toLocationId) {
-        paramIndex++; whereClauses.push(`m.to_location_id = $${paramIndex}`); 
-        queryParams.push(parseInt(toLocationId));
+      i++;
+      whereClauses.push(`m.to_location_id = $${i}`);
+      params.push(toLocationId);
     }
-    
-    // Filter 4: Produk (SKU/ID) (BARU)
     if (productId) {
-        paramIndex++;
-        whereClauses.push(`m.product_id = $${paramIndex}`);
-        queryParams.push(parseInt(productId));
+      i++;
+      whereClauses.push(`m.product_id = $${i}`);
+      params.push(productId);
     }
 
-    if (whereClauses.length > 0) { query += ` WHERE ${whereClauses.join(' AND ')}`; }
+    if (whereClauses.length > 0)
+      query += ` WHERE ${whereClauses.join(" AND ")}`;
     query += ` ORDER BY m.date DESC;`;
 
-    const result = await db.query(query, queryParams);
+    const result = await db.query(query, params);
     res.json(result.rows);
-
   } catch (err) {
-    console.error('ERROR IN /movements:', err.message);
-    res.status(500).send('Server Error saat mengambil laporan pergerakan.');
+    console.error("ERROR IN /movements:", err.message);
+    res.status(500).send("Server Error saat mengambil laporan pergerakan.");
   }
 });
 
-// ===============================================
-// 4. Laporan Kinerja Gudang (Performance Report)
-// ===============================================
-
-// GET /api/reports/performance - Laporan Kinerja Waktu Proses
+// ====================================================
+// 4. LAPORAN KINERJA GUDANG
+// ====================================================
 router.get("/performance", async (req, res) => {
   try {
     const query = `
@@ -229,144 +236,130 @@ router.get("/performance", async (req, res) => {
     `;
 
     const result = await db.query(query);
-
-    const formattedResult = result.rows.map((row) => ({
-      type: row.type,
+    const formatted = result.rows.map((r) => ({
+      type: r.type,
       avg_duration_minutes: (
-        parseFloat(row.avg_duration_seconds || 0) / 60
+        parseFloat(r.avg_duration_seconds || 0) / 60
       ).toFixed(2),
     }));
 
-    res.json(formattedResult);
+    res.json(formatted);
   } catch (err) {
     console.error("ERROR IN /performance:", err.message);
     res.status(500).send("Server Error saat mengambil laporan kinerja.");
   }
 });
 
-// ===============================================
-// 5. Laporan Aktivitas User (User Activity Report)
-// ===============================================
-
-// GET /api/reports/activity - Laporan Aktivitas User
-router.get('/activity', auth, authorize(['admin']), async (req, res) => {
+// ====================================================
+// 5. LAPORAN AKTIVITAS USER (FIX BUG FILTER TANGGAL)
+// ====================================================
+router.get("/activity", async (req, res) => {
   try {
-    const { startDate, endDate, operatorId } = req.query; 
+    const { startDate, endDate, operatorId } = req.query;
 
-    // --- LOGIKA FILTER (DISEDERHANAKAN & AMAN) ---
-    // Kita akan menggunakan $1, $2, $3 untuk parameter
     const queryParams = [
-        startDate || '1970-01-01', // $1
-        endDate ? new Date(new Date(endDate).setDate(new Date(endDate).getDate() + 1)) : '9999-12-31', // $2
-        operatorId || null // $3
+      startDate || "1970-01-01",
+      endDate
+        ? new Date(new Date(endDate).setDate(new Date(endDate).getDate() + 1))
+        : "9999-12-31",
+      operatorId || null,
     ];
-    
-    // String WHERE untuk filter operator (opsional)
-    const userWhereString = operatorId ? `AND u.id = $3` : '';
-    // --- AKHIR LOGIKA FILTER ---
 
+    const userWhere = operatorId ? `AND u.id = $3` : "";
 
     const query = `
       WITH UserActivities AS (
-          -- Aktivitas dari Transaksi (IN/OUT)
-          SELECT operator_id, 
-                 CASE 
-                   WHEN type = 'IN' THEN 'Inbound' 
-                   WHEN type = 'OUT' THEN 'Outbound' 
-                   ELSE 'Transaction' 
-                 END AS activity_type
-          FROM transactions
-          WHERE (date >= $1::date AND date < $2::date)
-            AND ($3::int IS NULL OR operator_id = $3::int)
-          
-          UNION ALL
-          
-          -- Aktivitas dari Perpindahan (Movement)
-          SELECT operator_id, 'Movement' AS activity_type
-          FROM movements
-          WHERE (date >= $1::date AND date < $2::date)
-            AND ($3::int IS NULL OR operator_id = $3::int)
+        SELECT operator_id, 
+               CASE WHEN type = 'IN' THEN 'Inbound' 
+                    WHEN type = 'OUT' THEN 'Outbound' 
+                    ELSE 'Transaction' END AS activity_type
+        FROM transactions
+        WHERE (date >= $1::date AND date < $2::date)
+          AND ($3::int IS NULL OR operator_id = $3::int)
+        UNION ALL
+        SELECT operator_id, 'Movement' AS activity_type
+        FROM movements
+        WHERE (date >= $1::date AND date < $2::date)
+          AND ($3::int IS NULL OR operator_id = $3::int)
       )
-      
       SELECT
-          u.id AS operator_id,
-          u.username AS operator_name,
-          u.role,
-          COUNT(a.operator_id) AS total_activities,
-          COUNT(CASE WHEN a.activity_type = 'Inbound' THEN 1 END) AS total_inbound,
-          COUNT(CASE WHEN a.activity_type = 'Outbound' THEN 1 END) AS total_outbound,
-          COUNT(CASE WHEN a.activity_type = 'Movement' THEN 1 END) AS total_movements
-          
+        u.id AS operator_id,
+        u.username AS operator_name,
+        u.role,
+        COUNT(a.operator_id) AS total_activities,
+        COUNT(CASE WHEN a.activity_type = 'Inbound' THEN 1 END) AS total_inbound,
+        COUNT(CASE WHEN a.activity_type = 'Outbound' THEN 1 END) AS total_outbound,
+        COUNT(CASE WHEN a.activity_type = 'Movement' THEN 1 END) AS total_movements
       FROM users u
-      
       -- PERBAIKAN: Ganti LEFT JOIN menjadi INNER JOIN
       -- Ini memastikan bahwa jika UserActivities kosong (karena filter tanggal), 
       -- tidak ada user yang akan ditampilkan.
       INNER JOIN UserActivities a ON u.id = a.operator_id 
-      
       WHERE u.role IN ('admin', 'staff')
-      ${userWhereString} -- Terapkan filter operator di sini jika ada
-      
+      ${userWhere}
       GROUP BY u.id, u.username, u.role
       ORDER BY total_activities DESC;
     `;
-    
-    const result = await db.query(query, queryParams);
-    
-    res.json(result.rows);
 
+    const result = await db.query(query, queryParams);
+    res.json(result.rows);
   } catch (err) {
-    console.error('ERROR IN /activity:', err.message);
-    res.status(500).send('Server Error saat mengambil laporan aktivitas user.');
+    console.error("ERROR IN /activity:", err.message);
+    res.status(500).send("Server Error saat mengambil laporan aktivitas user.");
   }
 });
-// ===============================================
-// 6. Laporan Customer & Order (Report No. 7)
-// ===============================================
 
-// GET /api/reports/customer-order - Laporan Order & Produk Terlaris per Pelanggan (FINAL DENGAN FILTER)
+// ====================================================
+// 6. LAPORAN CUSTOMER & ORDER (FIX BUG FILTER TANGGAL)
+// ====================================================
 router.get("/customer-order", async (req, res) => {
   try {
-    const { startDate, endDate } = req.query; // <-- AMBIL FILTER
+    const { startDate, endDate } = req.query;
 
-    let whereClauses = [];
-    let queryParams = [];
-    let paramIndex = 0;
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    if (!validateDateRange(start, end, res)) return;
 
-    // Logika Filter Tanggal
-    if (startDate && endDate) {
-      paramIndex++;
-      whereClauses.push(`t.date >= $${paramIndex}`);
-      queryParams.push(new Date(startDate));
+    let where = [];
+    let params = [];
+    let i = 0;
 
-      paramIndex++;
-      const end = new Date(endDate);
+    if (start) {
+      i++;
+      where.push(`t.date >= $${i}`);
+      params.push(start);
+    }
+    if (end) {
+      i++;
       end.setDate(end.getDate() + 1);
-      whereClauses.push(`t.date < $${paramIndex}`);
-      queryParams.push(end);
+      where.push(`t.date < $${i}`);
+      params.push(end);
     }
 
-    const whereString =
-      whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
+    const whereStr = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
+    const whereStrAnd =
+      where.length > 0 ? ` WHERE ${where.join(" AND ")} AND ` : ` WHERE `;
 
-    // 1. QUERY Customer Summary (Total Order dan Revenue per Pelanggan)
-    const customerSummaryQuery = `
+    const summaryQuery = `
       SELECT 
         c.id AS customer_id,
         c.name AS customer_name,
         COUNT(DISTINCT t.id) AS total_orders, 
         COALESCE(SUM(ti.quantity * p.selling_price), 0) AS total_revenue
       FROM customers c
-      LEFT JOIN transactions t ON c.id = t.customer_id AND t.type = 'OUT'
+      
+      -- PERBAIKAN: Ganti LEFT JOIN menjadi INNER JOIN
+      -- Ini memastikan hanya pelanggan DENGAN transaksi (sesuai filter) yang muncul
+      INNER JOIN transactions t ON c.id = t.customer_id AND t.type = 'OUT'
+      
       LEFT JOIN transaction_items ti ON t.id = ti.transaction_id
       LEFT JOIN products p ON ti.product_id = p.id
-      ${whereString} -- <-- TERAPKAN FILTER TANGGAL
+      ${whereStr}
       GROUP BY c.id, c.name
       ORDER BY total_orders DESC;
     `;
-    const summaryResult = await db.query(customerSummaryQuery, queryParams); // Kirim parameter
+    const summary = await db.query(summaryQuery, params);
 
-    // 2. Tentukan Produk Terlaris (Top 5 Global)
     const topProductQuery = `
       SELECT
         p.sku,
@@ -375,16 +368,16 @@ router.get("/customer-order", async (req, res) => {
       FROM transactions t
       JOIN transaction_items ti ON t.id = ti.transaction_id
       JOIN products p ON ti.product_id = p.id
-      ${whereString} AND t.type = 'OUT' -- <-- TERAPKAN FILTER TANGGAL
+      ${whereStrAnd} t.type = 'OUT'
       GROUP BY p.sku, p.name
       ORDER BY total_units_sold DESC
       LIMIT 5;
     `;
-    const topProductResult = await db.query(topProductQuery, queryParams); // Kirim parameter
+    const topProducts = await db.query(topProductQuery, params);
 
     res.json({
-      customerSummary: summaryResult.rows,
-      topSellingProducts: topProductResult.rows,
+      customerSummary: summary.rows,
+      topSellingProducts: topProducts.rows,
     });
   } catch (err) {
     console.error("ERROR IN /customer-order:", err.message);
@@ -392,97 +385,95 @@ router.get("/customer-order", async (req, res) => {
   }
 });
 
-// ===============================================
-// 7. Laporan Keuangan (Financial Overview)
-// ===============================================
-
-// GET /api/reports/financial - Laporan Keuangan (Final)
+// ====================================================
+// 7. LAPORAN KEUANGAN
+// ====================================================
 router.get("/financial", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    let whereClauses = [];
-    let queryParams = [];
-    let paramIndex = 0;
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    if (!validateDateRange(start, end, res)) return;
 
-    // Logika Filter Tanggal
-    if (startDate && endDate) {
-      paramIndex++;
-      whereClauses.push(`t.date >= $${paramIndex}`);
-      queryParams.push(new Date(startDate));
+    let where = [];
+    let params = [];
+    let i = 0;
 
-      paramIndex++;
-      const end = new Date(endDate);
+    if (start) {
+      i++;
+      where.push(`t.date >= $${i}`);
+      params.push(start);
+    }
+    if (end) {
+      i++;
       end.setDate(end.getDate() + 1);
-      whereClauses.push(`t.date < $${paramIndex}`);
-      queryParams.push(end);
+      where.push(`t.date < $${i}`);
+      params.push(end);
     }
 
-    const whereString =
-      whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
+    const whereStr = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
 
-    // 1. QUERY VALUASI STOK
-    const stockValueQuery = `
+    const stockValue = await db.query(`
       SELECT 
-          COALESCE(SUM(s.quantity * p.purchase_price), 0) AS total_asset_value,
-          COALESCE(SUM(s.quantity), 0) AS total_units_in_stock
+        COALESCE(SUM(s.quantity * p.purchase_price), 0) AS total_asset_value,
+        COALESCE(SUM(s.quantity), 0) AS total_units_in_stock
       FROM stock_levels s
       JOIN products p ON s.product_id = p.id;
-    `;
-    const stockValueResult = await db.query(stockValueQuery);
+    `);
 
-    // 2. QUERY LABA KOTOR KESELURUHAN
-    const profitQuery = `
-        SELECT 
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) AS total_sales_revenue, 
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS total_cogs,
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS gross_profit
-        FROM transactions t
-        JOIN transaction_items ti ON t.id = ti.transaction_id
-        JOIN products p ON ti.product_id = p.id
-        ${whereString} AND t.type = 'OUT';
-    `;
-    const profitResult = await db.query(profitQuery, queryParams);
+    const profit = await db.query(
+      `
+      SELECT 
+        COALESCE(SUM(ti.quantity * p.selling_price), 0) AS total_sales_revenue, 
+        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS total_cogs,
+        COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
+        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS gross_profit
+      FROM transactions t
+      JOIN transaction_items ti ON t.id = ti.transaction_id
+      JOIN products p ON ti.product_id = p.id
+      ${whereStr} AND t.type = 'OUT';
+    `,
+      params
+    );
 
-    // 3. QUERY PROFITABILITAS PER PRODUK
-    const productProfitQuery = `
-        SELECT
-            p.sku,
-            p.name AS product_name,
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) AS product_revenue,
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS product_cogs,
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS product_gross_profit
-        FROM transactions t
-        JOIN transaction_items ti ON t.id = ti.transaction_id
-        JOIN products p ON ti.product_id = p.id
-        ${whereString} AND t.type = 'OUT'
-        GROUP BY p.sku, p.name 
-        ORDER BY product_gross_profit DESC;
-    `;
-    const productProfitResult = await db.query(productProfitQuery, queryParams);
+    const productProfit = await db.query(
+      `
+      SELECT
+        p.sku,
+        p.name AS product_name,
+        COALESCE(SUM(ti.quantity * p.selling_price), 0) AS product_revenue,
+        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS product_cogs,
+        COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
+        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS product_gross_profit
+      FROM transactions t
+      JOIN transaction_items ti ON t.id = ti.transaction_id
+      JOIN products p ON ti.product_id = p.id
+      ${whereStr} AND t.type = 'OUT'
+      GROUP BY p.sku, p.name 
+      ORDER BY product_gross_profit DESC;
+    `,
+      params
+    );
 
-    // 4. QUERY TREND LABA KOTOR BULANAN
-    const monthlyTrendQuery = `
-        SELECT
-            DATE_TRUNC('month', t.date) AS sale_month,
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS monthly_profit
-        FROM transactions t
-        JOIN transaction_items ti ON t.id = ti.transaction_id
-        JOIN products p ON ti.product_id = p.id
-        WHERE t.type = 'OUT'
-        GROUP BY sale_month
-        ORDER BY sale_month ASC;
-    `;
-    const monthlyTrendResult = await db.query(monthlyTrendQuery);
+    const monthlyTrend = await db.query(`
+      SELECT
+        DATE_TRUNC('month', t.date) AS sale_month,
+        COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
+        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS monthly_profit
+      FROM transactions t
+      JOIN transaction_items ti ON t.id = ti.transaction_id
+      JOIN products p ON ti.product_id = p.id
+      WHERE t.type = 'OUT'
+      GROUP BY sale_month
+      ORDER BY sale_month ASC;
+    `);
 
     res.json({
-      valuation: stockValueResult.rows[0],
-      profit: profitResult.rows[0],
-      profitByProduct: productProfitResult.rows,
-      monthlyTrend: monthlyTrendResult.rows,
+      valuation: stockValue.rows[0],
+      profit: profit.rows[0],
+      profitByProduct: productProfit.rows,
+      monthlyTrend: monthlyTrend.rows,
     });
   } catch (err) {
     console.error("ERROR IN /financial:", err.message);
@@ -490,9 +481,16 @@ router.get("/financial", async (req, res) => {
   }
 });
 
-router.get('/status-inventory', async (req, res) => {
+// ====================================================
+// 8. STATUS INVENTORY
+// ====================================================
+router.get("/status-inventory", async (req, res) => {
   try {
-    const { startDate, endDate, statusId } = req.query; 
+    const { startDate, endDate, statusId } = req.query;
+
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    if (!validateDateRange(start, end, res)) return;
 
     let query = `
       SELECT 
@@ -502,7 +500,7 @@ router.get('/status-inventory', async (req, res) => {
         p.name AS product_name,
         l.name AS location_name,
         ti.quantity,
-        ss.name AS stock_status_name, -- Nama Status (Rusak/Kadaluarsa)
+        ss.name AS stock_status_name,
         ti.batch_number,
         ti.expiry_date,
         u.username AS operator_name
@@ -513,40 +511,38 @@ router.get('/status-inventory', async (req, res) => {
       JOIN stock_statuses ss ON ti.stock_status_id = ss.id
       LEFT JOIN users u ON t.operator_id = u.id
     `;
-    
-    let whereClauses = ["ss.name != 'Good'"]; // <-- HANYA AMBIL YANG BUKAN 'Good'
-    let queryParams = [];
-    let paramIndex = 0;
 
-    // Filter Tanggal
-    if (startDate && endDate) {
-        paramIndex++;
-        whereClauses.push(`t.date >= $${paramIndex}`);
-        queryParams.push(new Date(startDate));
-        
-        paramIndex++;
-        const end = new Date(endDate);
-        end.setDate(end.getDate() + 1); 
-        whereClauses.push(`t.date < $${paramIndex}`);
-        queryParams.push(end);
+    let where = ["ss.name != 'Good'"];
+    let params = [];
+    let i = 0;
+
+    if (start) {
+      i++;
+      where.push(`t.date >= $${i}`);
+      params.push(start);
     }
-    
-    // Filter Status Spesifik (misal: hanya 'Damaged')
+    if (end) {
+      i++;
+      end.setDate(end.getDate() + 1);
+      where.push(`t.date < $${i}`);
+      params.push(end);
+    }
     if (statusId) {
-        paramIndex++;
-        whereClauses.push(`ti.stock_status_id = $${paramIndex}`); 
-        queryParams.push(parseInt(statusId));
+      i++;
+      where.push(`ti.stock_status_id = $${i}`);
+      params.push(statusId);
     }
 
-    query += ` WHERE ${whereClauses.join(' AND ')}`;
+    query += ` WHERE ${where.join(" AND ")}`;
     query += ` ORDER BY t.date DESC;`;
 
-    const result = await db.query(query, queryParams);
+    const result = await db.query(query, params);
     res.json(result.rows);
-
   } catch (err) {
-    console.error('ERROR IN /status-inventory:', err.message);
-    res.status(500).send('Server Error saat mengambil laporan status inventaris.');
+    console.error("ERROR IN /status-inventory:", err.message);
+    res
+      .status(500)
+      .send("Server Error saat mengambil laporan status inventaris.");
   }
 });
 
