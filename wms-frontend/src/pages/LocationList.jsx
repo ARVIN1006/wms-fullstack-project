@@ -92,7 +92,21 @@ function LocationList() {
     }
   };
 
-
+const UtilizationBar = ({ percentage }) => {
+      const perc = Math.min(Math.max(percentage, 0), 100); // Batasi 0-100
+      let bgColor = 'bg-green-500';
+      if (perc > 75) bgColor = 'bg-yellow-500';
+      if (perc > 90) bgColor = 'bg-red-500';
+      
+      return (
+          <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div 
+                  className={`${bgColor} h-2.5 rounded-full`} 
+                  style={{ width: `${perc}%` }}
+              ></div>
+          </div>
+      );
+  };
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg relative"> 
       
@@ -119,6 +133,7 @@ function LocationList() {
                 {/* PERBAIKAN WHITESPACE: Semua <th> berdekatan */}
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama Lokasi</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Utilisasi Kapasitas</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deskripsi</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Stok Barang</th> 
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aksi</th>
@@ -129,6 +144,16 @@ function LocationList() {
                   <tr key={location.id}>
                     {/* PERBAIKAN WHITESPACE: Semua <td> berdekatan */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{location.name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex items-center">
+                            <div className="w-2/3">
+                                <UtilizationBar percentage={location.utilization_percentage} />
+                            </div>
+                            <span className="ml-2 text-xs font-medium text-gray-700">
+                                {parseFloat(location.utilization_percentage || 0).toFixed(1)}%
+                            </span>
+                        </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{location.description || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-lg font-bold">
                         {location.total_stock}

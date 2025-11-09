@@ -1,16 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 function LocationForm({ onSave, onClose, locationToEdit }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const [maxCapacity, setMaxCapacity] = useState(100);
 
   // Efek untuk mengisi form saat mode Edit
   useEffect(() => {
     if (locationToEdit) {
       setIsEditing(true);
       setName(locationToEdit.name);
-      setDescription(locationToEdit.description || '');
+      setDescription(locationToEdit.description || "");
+      setMaxCapacity(locationToEdit.max_capacity_m3 || 100);
     } else {
       setIsEditing(false);
     }
@@ -20,13 +22,14 @@ function LocationForm({ onSave, onClose, locationToEdit }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name) {
-      alert('Nama Lokasi wajib diisi!');
+      alert("Nama Lokasi wajib diisi!");
       return;
     }
-    onSave({ 
+    onSave({
       id: locationToEdit?.id,
-      name, 
-      description
+      name,
+      description,
+      max_capacity_m3: maxCapacity,
     });
   };
 
@@ -34,13 +37,15 @@ function LocationForm({ onSave, onClose, locationToEdit }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
         <h2 className="text-2xl font-bold mb-4">
-          {isEditing ? 'Edit Lokasi' : 'Tambah Lokasi Baru'}
+          {isEditing ? "Edit Lokasi" : "Tambah Lokasi Baru"}
         </h2>
-        
+
         <form onSubmit={handleSubmit}>
           {/* Nama Lokasi */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lokasi (cth: Rak A1) *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nama Lokasi (cth: Rak A1) *
+            </label>
             <input
               type="text"
               value={name}
@@ -49,17 +54,33 @@ function LocationForm({ onSave, onClose, locationToEdit }) {
               required
             />
           </div>
-          
+
           {/* Deskripsi */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi/Keterangan</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Deskripsi/Keterangan
+            </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
             />
           </div>
-
+          {/* BARU: Input Kapasitas */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Kapasitas Maksimum (m³)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={maxCapacity}
+              onChange={(e) => setMaxCapacity(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+              required
+            />
+          </div>
           {/* Tombol Aksi */}
           <div className="flex justify-end gap-4 mt-6">
             <button

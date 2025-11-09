@@ -18,6 +18,7 @@ import CustomerList from "./pages/CustomerList";
 import MovementForm from "./pages/MovementForm";
 import TransactionForm from "./pages/TransactionForm";
 import Reports from "./pages/Reports";
+import StockOpname from "./pages/StockOpname";
 
 // Rute Laporan
 import MovementReport from "./pages/MovementReport";
@@ -25,8 +26,7 @@ import PerformanceReport from "./pages/PerformanceReport";
 import FinancialReport from "./pages/FinancialReport";
 import UserActivityReport from "./pages/UserActivityReport";
 import CustomerOrderReport from "./pages/CustomerOrderReport";
-import StatusInventoryReport from './pages/StatusInventoryReport';
-
+import StatusInventoryReport from "./pages/StatusInventoryReport";
 
 import LoginPage from "./pages/Login";
 import AdminControl from "./pages/AdminControl";
@@ -75,6 +75,7 @@ function App() {
           <Route path="/locations" element={<LocationList />} />
           <Route path="/customers" element={<CustomerList />} />
           <Route path="/movements" element={<MovementForm />} />
+          <Route path="/stock-opname" element={<StockOpname />} />
           <Route path="/transactions" element={<TransactionForm />} />
           {/* RUTE PELAPORAN (Pastikan Semua Ada) */}
           <Route path="/reports" element={<Reports />} />

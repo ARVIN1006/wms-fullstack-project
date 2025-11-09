@@ -1,39 +1,39 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import Select from "react-select";
-import AsyncSelect from "react-select/async";
 
 function TransactionForm() {
   const DEFAULT_IN_LOCATION_ID = 1;
 
-  // State untuk data master
   const [locations, setLocations] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [stockStatuses, setStockStatuses] = useState([]);
   const [loadingMaster, setLoadingMaster] = useState(true);
 
-  // State untuk formulir
   const [transactionType, setTransactionType] = useState("IN");
   const [notes, setNotes] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // State Item (di-upgrade)
   const [items, setItems] = useState([
     {
+      skuInput: "",
+      productName: "...",
       product: null,
       location: null,
       quantity: 1,
       stockStatus: null,
       purchasePrice: 0,
       sellingPrice: 0,
-      batchNumber: "", // <-- BARU
-      expiryDate: "", // <-- BARU (format YYYY-MM-DD)
+      batchNumber: "",
+      expiryDate: "",
+      volume_m3: 0,
     },
   ]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Format data
+  const lastInputRef = useRef(null);
+
   const locationOptions = locations.map((l) => ({
     value: l.id,
     label: l.name,
@@ -47,7 +47,6 @@ function TransactionForm() {
     label: s.name,
   }));
 
-  // 1. Ambil data master (Lokasi, Supplier, Status Stok)
   useEffect(() => {
     async function fetchMasterData() {
       try {
@@ -72,29 +71,39 @@ function TransactionForm() {
     fetchMasterData();
   }, []);
 
-  // --- 2. FUNGSI PENCARIAN PRODUK ASYNC ---
-  const loadProductOptions = async (inputValue) => {
+  useEffect(() => {
+    if (lastInputRef.current) lastInputRef.current.focus();
+  }, [items.length]);
+
+  const handleSkuScan = async (index, sku) => {
+    if (!sku) return;
     try {
-      const response = await axios.get(
-        `/api/products?page=1&limit=20&search=${inputValue}`
-      );
-      return response.data.products.map((p) => ({
-        value: p.id,
-        label: `${p.sku} - ${p.name}`,
-        purchasePrice: parseFloat(p.purchase_price || 0),
-        sellingPrice: parseFloat(p.selling_price || 0),
-      }));
+      const response = await axios.get(`/api/products/by-sku/${sku}`);
+      const productData = response.data;
+
+      const selectedOption = {
+        value: productData.id,
+        label: `${productData.sku} - ${productData.name}`,
+        purchasePrice: parseFloat(productData.purchase_price || 0),
+        sellingPrice: parseFloat(productData.selling_price || 0),
+        volume_m3: parseFloat(productData.volume_m3 || 0),
+      };
+
+      handleItemSelectChange(index, "product", selectedOption);
+      toast.success(`Produk ditemukan: ${productData.name}`);
     } catch (err) {
-      return [];
+      toast.error("Produk tidak ditemukan.");
+      const newItems = [...items];
+      newItems[index].product = null;
+      newItems[index].productName = "...";
+      newItems[index].volume_m3 = 0;
+      setItems(newItems);
     }
   };
 
-  // --- 3. FUNGSI PENGELOLAAN ITEM (Handler Generik) ---
-
-  // Handler generik untuk mengubah nilai di state 'items'
-  const handleItemInputChange = (index, fieldName, value) => {
+  const handleItemSkuChange = (index, value) => {
     const newItems = [...items];
-    newItems[index][fieldName] = value;
+    newItems[index].skuInput = value;
     setItems(newItems);
   };
 
@@ -102,13 +111,14 @@ function TransactionForm() {
     const newItems = [...items];
     newItems[index][fieldName] = selectedOption;
 
-    const goodStatus = statusOptions.find((s) => s.value === 1); // Asumsi 'Good' ID 1
+    const goodStatus = statusOptions.find((s) => s.value === 1);
 
-    // LOGIKA OTOMATIS: Saat memilih PRODUK
     if (fieldName === "product" && selectedOption) {
+      newItems[index].productName = selectedOption.label;
       newItems[index].purchasePrice = selectedOption.purchasePrice;
       newItems[index].sellingPrice = selectedOption.sellingPrice;
       newItems[index].stockStatus = goodStatus || null;
+      newItems[index].volume_m3 = selectedOption.volume_m3;
 
       const locationDefault = locationOptions.find(
         (loc) => loc.value === DEFAULT_IN_LOCATION_ID
@@ -119,10 +129,18 @@ function TransactionForm() {
     setItems(newItems);
   };
 
+  const handleItemInputChange = (index, fieldName, value) => {
+    const newItems = [...items];
+    newItems[index][fieldName] = value;
+    setItems(newItems);
+  };
+
   const handleAddItem = () => {
     setItems([
       ...items,
       {
+        skuInput: "",
+        productName: "...",
         product: null,
         location: null,
         quantity: 1,
@@ -131,21 +149,48 @@ function TransactionForm() {
         sellingPrice: 0,
         batchNumber: "",
         expiryDate: "",
+        volume_m3: 0,
       },
     ]);
   };
 
   const handleRemoveItem = (index) => {
-    const newItems = items.filter((_, i) => i !== index);
+    const newItems = [...items];
+    newItems.splice(index, 1);
     setItems(newItems);
   };
 
-  // 4. Fungsi Submit (DI-UPGRADE)
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Validasi
+    if (transactionType === "IN") {
+      for (const item of items) {
+        if (!item.product || !item.location) continue;
+
+        const productVolume = item.volume_m3;
+        const totalVolumeToMove = item.quantity * productVolume;
+
+        const loc = locations.find((l) => l.id === item.location.value);
+
+        if (loc) {
+          const currentVolumeUsed = parseFloat(loc.current_volume_used || 0);
+          const maxCapacity = parseFloat(loc.max_capacity_m3 || 0);
+          const availableSpace = maxCapacity - currentVolumeUsed;
+
+          if (totalVolumeToMove > availableSpace) {
+            toast.error(
+              `Kapasitas lokasi "${
+                loc.name
+              }" tidak cukup! Sisa kapasitas: ${availableSpace.toFixed(2)} m³.`
+            );
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      }
+    }
+
     if (
       items.some(
         (item) =>
@@ -155,19 +200,17 @@ function TransactionForm() {
           item.quantity <= 0
       )
     ) {
-      toast.error(
-        "Pastikan semua baris item terisi (Produk, Lokasi, Status, Jumlah)."
-      );
+      toast.error("Pastikan semua baris item terisi dengan benar.");
       setIsSubmitting(false);
       return;
     }
+
     if (transactionType === "IN" && !selectedSupplier) {
       toast.error("Pilih Supplier untuk transaksi Barang Masuk.");
       setIsSubmitting(false);
       return;
     }
 
-    // Format data untuk API
     const formattedItems = items.map((item) => ({
       product_id: item.product.value,
       location_id: item.location.value,
@@ -175,8 +218,8 @@ function TransactionForm() {
       stock_status_id: item.stockStatus.value,
       purchase_price: item.purchasePrice,
       selling_price: item.sellingPrice,
-      batch_number: item.batchNumber || null, // <-- KIRIM BATCH
-      expiry_date: item.expiryDate || null, // <-- KIRIM EXPIRY
+      batch_number: item.batchNumber || null,
+      expiry_date: item.expiryDate || null,
     }));
 
     const payload = {
@@ -192,13 +235,14 @@ function TransactionForm() {
 
     try {
       await axios.post(endpoint, payload);
-      toast.success(`Transaksi berhasil dicatat!`);
+      toast.success("Transaksi berhasil dicatat!");
 
-      // Reset formulir
       setNotes("");
       setSelectedSupplier(null);
       setItems([
         {
+          skuInput: "",
+          productName: "...",
           product: null,
           location: null,
           quantity: 1,
@@ -207,8 +251,12 @@ function TransactionForm() {
           sellingPrice: 0,
           batchNumber: "",
           expiryDate: "",
+          volume_m3: 0,
         },
       ]);
+
+      const locationRes = await axios.get("/api/locations");
+      setLocations(locationRes.data);
     } catch (err) {
       const errorMsg = err.response?.data?.msg || "Gagal mencatat transaksi.";
       toast.error(errorMsg);
@@ -231,7 +279,6 @@ function TransactionForm() {
         Buat Transaksi Baru
       </h1>
 
-      {/* Tipe Transaksi */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Tipe Transaksi
@@ -240,66 +287,55 @@ function TransactionForm() {
           <button
             type="button"
             onClick={() => setTransactionType("IN")}
-            className={`py-2 px-4 rounded font-medium ${
+            className={`py-2 px-4 rounded ${
               transactionType === "IN"
                 ? "bg-green-600 text-white"
-                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                : "bg-gray-200"
             }`}
           >
-            📦 Barang Masuk
+            Barang Masuk
           </button>
           <button
             type="button"
             onClick={() => setTransactionType("OUT")}
-            className={`py-2 px-4 rounded font-medium ${
+            className={`py-2 px-4 rounded ${
               transactionType === "OUT"
                 ? "bg-red-600 text-white"
-                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                : "bg-gray-200"
             }`}
           >
-            🚚 Barang Keluar
+            Barang Keluar
           </button>
         </div>
       </div>
 
-      {/* Form Header (Supplier & Catatan) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Dropdown Supplier */}
         {transactionType === "IN" && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Supplier *
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Supplier
             </label>
             <Select
               options={supplierOptions}
               value={selectedSupplier}
               onChange={(option) => setSelectedSupplier(option)}
               placeholder="Pilih Supplier..."
-              className="w-full mt-1"
-              classNamePrefix="react-select"
             />
           </div>
         )}
-
-        {/* Input Catatan */}
-        <div className={transactionType === "IN" ? "" : "md:col-span-2"}>
-          <label
-            htmlFor="notes"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Catatan (Misal: PO-123)
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Catatan
           </label>
-          <input
-            type="text"
-            id="notes"
+          <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+            placeholder="Tulis catatan..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
           />
         </div>
       </div>
 
-      {/* Daftar Item Dinamis */}
       <h2 className="text-lg font-semibold text-gray-700 mb-3">
         Daftar Barang
       </h2>
@@ -307,153 +343,148 @@ function TransactionForm() {
         {items.map((item, index) => (
           <div
             key={index}
-            className="flex flex-wrap items-end gap-4 p-4 border rounded-md bg-gray-50"
+            className="relative p-4 border rounded-md bg-gray-50"
           >
-            {/* Dropdown Produk (Async) */}
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-gray-700">
-                Produk *
-              </label>
-              <AsyncSelect
-                loadOptions={loadProductOptions}
-                value={item.product}
-                onChange={(selectedOption) =>
-                  handleItemSelectChange(index, "product", selectedOption)
-                }
-                placeholder="Ketik untuk mencari..."
-                className="w-full mt-1"
-                classNamePrefix="react-select"
-                cacheOptions
-                defaultOptions
-              />
-            </div>
-
-            {/* Dropdown Lokasi */}
-            <div className="flex-1 min-w-[150px]">
-              <label className="block text-sm font-medium text-gray-700">
-                Lokasi *
-              </label>
-              <Select
-                options={locationOptions}
-                value={item.location}
-                onChange={(selectedOption) =>
-                  handleItemSelectChange(index, "location", selectedOption)
-                }
-                placeholder="Pilih Lokasi..."
-                className="w-full mt-1"
-                classNamePrefix="react-select"
-              />
-            </div>
-
-            {/* Input Jumlah */}
-            <div className="flex-shrink-0 w-24">
-              <label className="block text-sm font-medium text-gray-700">
-                Jumlah *
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={item.quantity}
-                onChange={(e) =>
-                  handleItemInputChange(
-                    index,
-                    "quantity",
-                    parseInt(e.target.value) || 1
-                  )
-                }
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-                required
-              />
-            </div>
-
-            {/* Input Harga Transaksi (Override) */}
-            <div className="flex-1 min-w-[120px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Harga {transactionType === "IN" ? "Beli" : "Jual"} Unit
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={
-                  transactionType === "IN"
-                    ? item.purchasePrice
-                    : item.sellingPrice
-                }
-                onChange={(e) =>
-                  handleItemInputChange(
-                    index,
-                    transactionType === "IN" ? "purchasePrice" : "sellingPrice",
-                    parseFloat(e.target.value) || 0
-                  )
-                }
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-              />
-            </div>
-
-            {/* Dropdown Status Stok */}
-            <div className="flex-1 min-w-[150px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Status Stok *
-              </label>
-              <Select
-                options={statusOptions}
-                value={item.stockStatus}
-                onChange={(selectedOption) =>
-                  handleItemSelectChange(index, "stockStatus", selectedOption)
-                }
-                placeholder="Pilih Status..."
-                classNamePrefix="react-select"
-              />
-            </div>
-
-            {/* --- INPUT BARU: BATCH & EXPIRY --- */}
-
-            {/* Input No. Batch */}
-            <div className="flex-1 min-w-[120px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                No. Batch
-              </label>
-              <input
-                type="text"
-                value={item.batchNumber}
-                onChange={(e) =>
-                  handleItemInputChange(index, "batchNumber", e.target.value)
-                }
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-              />
-            </div>
-
-            {/* Input Tgl. Kadaluarsa */}
-            <div className="flex-1 min-w-[120px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Tgl. Kadaluarsa
-              </label>
-              <input
-                type="date"
-                value={item.expiryDate}
-                onChange={(e) =>
-                  handleItemInputChange(index, "expiryDate", e.target.value)
-                }
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-              />
-            </div>
-
-            {/* Tombol Hapus Baris */}
             {items.length > 1 && (
               <button
                 type="button"
                 onClick={() => handleRemoveItem(index)}
-                className="h-10 px-3 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded"
+                className="absolute top-2 right-2 h-7 w-7 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full flex items-center justify-center"
               >
-                X
+                &times;
               </button>
             )}
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Scan SKU/Barcode *
+                </label>
+                <input
+                  type="text"
+                  value={item.skuInput}
+                  onChange={(e) => handleItemSkuChange(index, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSkuScan(index, item.skuInput);
+                    }
+                  }}
+                  ref={index === items.length - 1 ? lastInputRef : null}
+                  placeholder="Scan barcode..."
+                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                />
+                <p className="text-xs text-gray-600 mt-1 h-4">
+                  {item.productName !== "..."
+                    ? item.productName
+                    : "Menunggu SKU..."}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Lokasi *
+                </label>
+                <Select
+                  options={locationOptions}
+                  value={item.location}
+                  onChange={(selectedOption) =>
+                    handleItemSelectChange(index, "location", selectedOption)
+                  }
+                  placeholder="Pilih Lokasi..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Jumlah *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={item.quantity}
+                  onChange={(e) =>
+                    handleItemInputChange(index, "quantity", e.target.value)
+                  }
+                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Harga {transactionType === "IN" ? "Beli" : "Jual"}
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={
+                    transactionType === "IN"
+                      ? item.purchasePrice
+                      : item.sellingPrice
+                  }
+                  onChange={(e) =>
+                    handleItemInputChange(
+                      index,
+                      transactionType === "IN"
+                        ? "purchasePrice"
+                        : "sellingPrice",
+                      e.target.value
+                    )
+                  }
+                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status Stok *
+                </label>
+                <Select
+                  options={statusOptions}
+                  value={item.stockStatus}
+                  onChange={(selectedOption) =>
+                    handleItemSelectChange(index, "stockStatus", selectedOption)
+                  }
+                  placeholder="Pilih Status..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  No. Batch
+                </label>
+                <input
+                  type="text"
+                  value={item.batchNumber}
+                  onChange={(e) =>
+                    handleItemInputChange(index, "batchNumber", e.target.value)
+                  }
+                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tgl. Kadaluarsa
+                </label>
+                <input
+                  type="date"
+                  value={item.expiryDate}
+                  onChange={(e) =>
+                    handleItemInputChange(index, "expiryDate", e.target.value)
+                  }
+                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+                />
+              </div>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Tombol Tambah Baris */}
       <button
         type="button"
         onClick={handleAddItem}
@@ -462,7 +493,6 @@ function TransactionForm() {
         + Tambah Baris Barang
       </button>
 
-      {/* Tombol Submit */}
       <div className="border-t pt-4">
         <button
           type="submit"

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "react-hot-toast";
-import { useState } from "react"; 
+import { useState } from "react";
 
 function Navbar() {
   const { logout, userRole } = useAuth();
@@ -21,8 +21,8 @@ function Navbar() {
     return (
       <div
         className="relative py-5 -my-2"
-        onMouseEnter={() => setIsMenuOpen(true)} // Mouse masuk, buka
-        onMouseLeave={() => setIsMenuOpen(false)} // Mouse keluar, tutup
+        onMouseEnter={() => setIsMenuOpen(true)}
+        onMouseLeave={() => setIsMenuOpen(false)}
       >
         <button className="flex items-center hover:text-blue-200 transition focus:outline-none">
           {title}
@@ -72,6 +72,12 @@ function Navbar() {
           </Link>
           <Link to="/movements" className="hover:text-blue-200 transition px-3">
             Perpindahan
+          </Link>
+          <Link
+            to="/stock-opname"
+            className="hover:text-blue-200 transition px-3 text-yellow-300 font-bold"
+          >
+            Stock Opname
           </Link>
           {/* 1. GRUP MASTER DATA (Hanya Admin) */}
           {isAdmin && (
@@ -136,6 +142,7 @@ function Navbar() {
               >
                 Laporan Aktivitas User
               </Link>
+
               <Link
                 to="/reports/status-inventory"
                 className="block px-4 py-2 text-sm hover:bg-gray-100 text-yellow-700"

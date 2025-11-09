@@ -56,4 +56,30 @@ router.get('/low-stock', auth, authorize(['admin', 'staff']), async (req, res) =
   }
 });
 
+// GET /api/stocks/specific/:productId/:locationId - (BARU: Untuk Stock Opname)
+// Mengizinkan Admin dan Staff
+router.get('/specific/:productId/:locationId', auth, authorize(['admin', 'staff']), async (req, res) => {
+  try {
+    const { productId, locationId } = req.params;
+
+    const query = `
+      SELECT quantity 
+      FROM stock_levels 
+      WHERE product_id = $1 AND location_id = $2
+    `;
+    
+    const result = await db.query(query, [productId, locationId]);
+
+    // Jika tidak ada data (belum pernah ada stok), kirim 0
+    if (result.rows.length === 0) {
+      return res.json({ system_count: 0 });
+    }
+
+    res.json({ system_count: result.rows[0].quantity });
+
+  } catch (err) {
+    console.error('ERROR IN /stocks/specific:', err.message);
+    res.status(500).send('Server Error');
+  }
+});
 module.exports = router;

@@ -4,7 +4,7 @@ const db = require('../config/db');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/role'); // <-- IMPOR authorize
 
-// GET semua lokasi (DI-UPDATE: Izinkan 'staff' membaca)
+// GET semua lokasi (DI-UPGRADE dengan Utilisasi)
 router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
   try {
     const query = `
@@ -12,10 +12,19 @@ router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
         l.id,
         l.name,
         l.description,
-        COALESCE(SUM(s.quantity), 0) AS total_stock 
+        l.max_capacity_m3,
+        COALESCE(SUM(s.quantity), 0) AS total_stock, 
+        
+        -- BARU: Menghitung Total Volume yang Terpakai (Stok * Volume Produk)
+        COALESCE(SUM(s.quantity * p.volume_m3), 0) AS current_volume_used,
+        
+        -- BARU: Hitung Persentase Utilisasi (Nyata)
+        (COALESCE(SUM(s.quantity * p.volume_m3), 0) / l.max_capacity_m3) * 100 AS utilization_percentage
+        
       FROM locations l
       LEFT JOIN stock_levels s ON l.id = s.location_id 
-      GROUP BY l.id, l.name, l.description
+      LEFT JOIN products p ON s.product_id = p.id -- JOIN ke Produk untuk dapat volume
+      GROUP BY l.id, l.name, l.description, l.max_capacity_m3
       ORDER BY l.name ASC;
     `;
     
@@ -27,13 +36,13 @@ router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
   }
 });
 
-// POST tambah lokasi baru (DI-UPDATE: Hanya Admin)
+// POST tambah lokasi baru (DI-UPGRADE dengan Kapasitas)
 router.post('/', auth, authorize(['admin']), async (req, res) => {
   try {
-    const { name, description } = req.body;
-    const newLocation = await db.query(
-      'INSERT INTO locations (name, description) VALUES ($1, $2) RETURNING *',
-      [name, description]
+    const { name, description, max_capacity_m3 } = req.body;
+    const newLocation = await client.query(
+      'INSERT INTO locations (name, description, max_capacity_m3) VALUES ($1, $2, $3) RETURNING *',
+      [name, description, max_capacity_m3 || 100] // Default 100 jika tidak diisi
     );
     res.json(newLocation.rows[0]);
   } catch (err) {
@@ -41,8 +50,5 @@ router.post('/', auth, authorize(['admin']), async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
-
-// PUT dan DELETE (Tambahkan authorize(['admin']))
-// ... (Tambahkan authorize(['admin']) ke rute PUT dan DELETE jika ada)
 
 module.exports = router;

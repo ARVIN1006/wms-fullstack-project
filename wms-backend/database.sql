@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS locations (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) UNIQUE NOT NULL,
-    description TEXT
+    description TEXT,
+    max_capacity_m3 NUMERIC(10, 2) DEFAULT 100.00
 );
 
 -- #################################################
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS products (
     purchase_price NUMERIC(10, 2) DEFAULT 0.00,
     selling_price NUMERIC(10, 2) DEFAULT 0.00,
     main_supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL, 
+    volume_m3 NUMERIC(10, 4) DEFAULT 0.0100,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
