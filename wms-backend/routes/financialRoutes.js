@@ -1,36 +1,37 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../config/db');
-const auth = require('../middleware/auth');
-const authorize = require = require('../middleware/role');
+const db = require("../config/db");
+const auth = require("../middleware/auth");
+const authorize = require("../middleware/role"); // FIX: Menghapus require ganda
 
 // Middleware: Hanya Admin yang boleh melihat laporan keuangan
-router.use(auth, authorize(['admin']));
+router.use(auth, authorize(["admin"]));
 
 // GET /api/reports/financial - Laporan Keuangan (Final Upgrade dengan Filter & Tren)
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const { startDate, endDate } = req.query; // Ambil filter
-    
+
     let whereClauses = [];
     let queryParams = [];
     let paramIndex = 0;
 
     // Logika Filter Tanggal (Sama seperti di Report History)
     if (startDate && endDate) {
-        paramIndex++;
-        whereClauses.push(`t.date >= $${paramIndex}`);
-        queryParams.push(new Date(startDate));
-        
-        paramIndex++;
-        const end = new Date(endDate);
-        end.setDate(end.getDate() + 1); 
-        whereClauses.push(`t.date < $${paramIndex}`);
-        queryParams.push(end);
+      paramIndex++;
+      whereClauses.push(`t.date >= $${paramIndex}`);
+      queryParams.push(new Date(startDate));
+
+      paramIndex++;
+      const end = new Date(endDate);
+      end.setDate(end.getDate() + 1);
+      whereClauses.push(`t.date < $${paramIndex}`);
+      queryParams.push(end);
     }
-    
-    const whereString = whereClauses.length > 0 ? ` WHERE ${whereClauses.join(' AND ')}` : '';
-    
+
+    const whereString =
+      whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
+
     // --- 1. QUERY VALUASI STOK (TIDAK DIPENGARUHI OLEH FILTER TANGGAL) ---
     // Valuasi stok selalu berdasarkan stok saat ini
     const stockValueQuery = `
@@ -41,7 +42,7 @@ router.get('/', async (req, res) => {
       JOIN products p ON s.product_id = p.id;
     `;
     const stockValueResult = await db.query(stockValueQuery);
-    
+
     // --- 2. QUERY LABA KOTOR KESELURUHAN (DIPENGARUHI FILTER) ---
     // Gunakan queryParams dan whereString untuk filter
     const profitQuery = `
@@ -56,7 +57,7 @@ router.get('/', async (req, res) => {
         ${whereString} AND t.type = 'OUT'; -- Gabungkan filter Tanggal
     `;
     const profitResult = await db.query(profitQuery, queryParams);
-    
+
     // --- 3. QUERY PROFITABILITAS PER PRODUK (DIPENGARUHI FILTER) ---
     const productProfitQuery = `
         SELECT
@@ -98,10 +99,9 @@ router.get('/', async (req, res) => {
       profitByProduct: productProfitResult.rows,
       monthlyTrend: monthlyTrendResult.rows, // <-- BARU: Data untuk Line Chart
     });
-
   } catch (err) {
     console.error(err.message);
-    res.status(500).send('Server Error saat mengambil laporan keuangan.');
+    res.status(500).send("Server Error saat mengambil laporan keuangan.");
   }
 });
 module.exports = router;
