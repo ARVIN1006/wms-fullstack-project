@@ -35,6 +35,7 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
       : "created_at";
     const order = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
 
+    // 1. Bangun query pencarian jika ada
     if (search) {
       paramIndex++;
       queryParams.push(`%${search}%`);
@@ -46,13 +47,14 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
     const whereString =
       whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
 
-    // Query A: Hitung total data
+    // 2. Query A: Hitung total data
     const countQuery = `SELECT COUNT(p.id) FROM products p ${whereString}`;
     const countResult = await db.query(countQuery, queryParams);
     const totalCount = parseInt(countResult.rows[0].count, 10);
     const totalPages = Math.ceil(totalCount / parseInt(limit));
 
-    // Query B: Ambil data
+    // 3. Query B: Ambil data (Melakukan JOIN ke Suppliers)
+
     const limitIndex = queryParams.length + 1;
     const offsetIndex = queryParams.length + 2;
 
@@ -73,6 +75,7 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
 
     const dataResult = await db.query(dataQuery, queryParams);
 
+    // 4. Kirim Respons
     res.json({
       products: dataResult.rows,
       totalPages,
@@ -80,12 +83,10 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
       totalCount,
     });
   } catch (err) {
-    console.error("ERROR IN GET /API/PRODUCTS:", err.message);
+    console.error("FINAL ERROR IN GET /API/PRODUCTS:", err.message);
     res.status(500).send("Server Error: Gagal memuat data produk master.");
   }
 });
-// ... (POST, PUT, DELETE, dan GET /:id/stock)
-// (Pastikan rute POST/PUT/DELETE di file ini sudah sesuai dengan kode lengkap yang terakhir saya berikan)
 
 // GET /api/products/:id/main-stock - Mendapatkan lokasi dengan stok terbanyak (untuk Auto-Fill Movement)
 router.get(
@@ -155,6 +156,8 @@ router.get(
     }
   }
 );
+
+// GET /api/products/by-sku/:sku (FIX: Tambah category_id dan volume_m3)
 router.get(
   "/by-sku/:sku",
   auth,
@@ -163,18 +166,16 @@ router.get(
     try {
       const { sku } = req.params;
 
-      // Cari produk dengan SKU yang sama persis (case-insensitive)
-      // Kita juga mengambil harga beli dan jual
+      // Tambahkan volume_m3 dan category_id ke SELECT
       const productResult = await db.query(
-      'SELECT id, sku, name, purchase_price, selling_price, volume_m3 FROM products WHERE sku ILIKE $1 LIMIT 1',
-      [sku]
-    );
+        "SELECT id, sku, name, purchase_price, selling_price, volume_m3, category_id FROM products WHERE sku ILIKE $1 LIMIT 1",
+        [sku]
+      );
 
       if (productResult.rows.length === 0) {
         return res.status(404).json({ msg: "Produk tidak ditemukan." });
       }
 
-      // Kirim data produk
       res.json(productResult.rows[0]);
     } catch (err) {
       console.error("ERROR IN /by-sku:", err.message);
@@ -182,12 +183,14 @@ router.get(
     }
   }
 );
-// POST /api/products - (PERBAIKAN PADA INSERT)
+
+// POST /api/products - Tambah produk BARU (FIX: Tambahkan semua kolom baru)
 router.post("/", auth, authorize(["admin", "staff"]), async (req, res) => {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
 
+    // Ambil semua data master
     const {
       sku,
       name,
@@ -196,15 +199,17 @@ router.post("/", auth, authorize(["admin", "staff"]), async (req, res) => {
       purchase_price,
       selling_price,
       main_supplier_id,
+      category_id,
+      volume_m3,
       initial_stock_qty,
       initial_location_id,
     } = req.body;
     const operator_id = req.user.id;
     const stock_status_id = 1;
 
-    // 1. Masukkan data Master Produk (FIX: Tambahkan main_supplier_id di sini)
+    // FIX 1: Masukkan data Master Produk (Menggunakan 9 parameter baru)
     const newProduct = await client.query(
-      "INSERT INTO products (sku, name, description, unit, purchase_price, selling_price, main_supplier_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, sku",
+      "INSERT INTO products (sku, name, description, unit, purchase_price, selling_price, main_supplier_id, category_id, volume_m3) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, sku",
       [
         sku,
         name,
@@ -213,6 +218,8 @@ router.post("/", auth, authorize(["admin", "staff"]), async (req, res) => {
         purchase_price,
         selling_price,
         main_supplier_id || null,
+        category_id || null,
+        volume_m3 || 0.01, // Tambahkan volume_m3 (default 0.01 jika null)
       ]
     );
     const productId = newProduct.rows[0].id;
@@ -261,7 +268,7 @@ router.post("/", auth, authorize(["admin", "staff"]), async (req, res) => {
   }
 });
 
-// PUT /api/products/:id - Update data produk (Kode ini sudah benar)
+// PUT /api/products/:id - Update data produk
 router.put("/:id", auth, authorize(["admin", "staff"]), async (req, res) => {
   try {
     const { id } = req.params;
@@ -274,10 +281,12 @@ router.put("/:id", auth, authorize(["admin", "staff"]), async (req, res) => {
       selling_price,
       main_supplier_id,
       category_id,
+      volume_m3,
     } = req.body;
 
+    // Query UPDATE (9 parameter untuk produk)
     const updateProduct = await db.query(
-      "UPDATE products SET sku = $1, name = $2, description = $3, unit = $4, purchase_price = $5, selling_price = $6, main_supplier_id = $7, category_id = $8 WHERE id = $9 RETURNING *",
+      "UPDATE products SET sku = $1, name = $2, description = $3, unit = $4, purchase_price = $5, selling_price = $6, main_supplier_id = $7, category_id = $8, volume_m3 = $9 WHERE id = $10 RETURNING *",
       [
         sku,
         name,
@@ -287,6 +296,7 @@ router.put("/:id", auth, authorize(["admin", "staff"]), async (req, res) => {
         selling_price,
         main_supplier_id || null,
         category_id || null,
+        volume_m3 || 0.01,
         id,
       ]
     );
@@ -304,7 +314,7 @@ router.put("/:id", auth, authorize(["admin", "staff"]), async (req, res) => {
   }
 });
 
-// DELETE /api/products/:id (FIX: Hapus '/s' yang salah ketik)
+// DELETE /api/products/:id
 router.delete("/:id", auth, authorize(["admin"]), async (req, res) => {
   try {
     const { id } = req.params;

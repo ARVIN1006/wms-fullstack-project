@@ -9,10 +9,12 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+
     const { notes, items, supplier_id } = req.body;
     const operator_id = req.user.id;
+    const stock_status_id = items[0]?.stock_status_id || 1; // Ambil status ID (default 1 jika gagal)
 
-    // 1. Buat Header Transaksi (Sama)
+    // 1. Buat Header Transaksi
     const transResult = await client.query(
       "INSERT INTO transactions (type, notes, supplier_id, operator_id, process_start, process_end) VALUES ('IN', $1, $2, $3, NOW(), NOW()) RETURNING id",
       [notes, supplier_id || null, operator_id]
@@ -21,20 +23,22 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
 
     // 2. Proses Setiap Item Barang
     for (const item of items) {
-      // BARU: Ambil Batch & Expiry
+      // Ambil Status, Harga, Batch, Expiry (SEMUA FIELD BARU)
       const {
         product_id,
         location_id,
         quantity,
         stock_status_id,
         purchase_price,
+        selling_price,
         batch_number,
         expiry_date,
       } = item;
 
-      if (quantity <= 0 || !product_id || !location_id || !stock_status_id) {
+      // 2a. Validasi Dasar
+      if (quantity <= 0 || !product_id || !location_id) {
         throw new Error(
-          "Item baris wajib memiliki Produk, Lokasi, Status, dan Jumlah."
+          "Item baris wajib memiliki Produk, Lokasi, dan Jumlah."
         );
       }
 
@@ -49,7 +53,7 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
           stock_status_id,
           batch_number || null,
           expiry_date || null,
-        ] // Simpan Batch/Expiry
+        ] // <-- Simpan Semua Detail
       );
 
       // 2c. Update Master Data Produk (Harga Beli Terbaru)
@@ -61,9 +65,6 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
       }
 
       // 2d. Update Stok (UPSERT)
-      // Catatan: Logika stok_levels kita tidak memisahkan stok berdasarkan status (Good/Damaged).
-      // Jika WMS membutuhkan stok terpisah per Status, skema 'stock_levels' harus diubah.
-      // Untuk saat ini, kita hanya update total quantity.
       await client.query(
         `
         INSERT INTO stock_levels (product_id, location_id, quantity)
@@ -76,10 +77,17 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
     }
 
     await client.query("COMMIT");
+
+    // --- Kirim Sinyal Realtime (Wajib menggunakan req.io yang disuntikkan di index.js) ---
+    req.io.emit("new_activity", {
+      message: "Aktivitas Inbound baru tercatat!",
+      type: "IN",
+    });
+
     res.json({ msg: "Barang masuk berhasil dicatat!", transactionId });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(err.message);
+    console.error("TRANSACTION IN ERROR:", err.message); // <-- Logger yang lebih jelas
     res.status(500).json({ msg: "Gagal mencatat transaksi: " + err.message });
   } finally {
     client.release();
@@ -91,10 +99,11 @@ router.post("/out", auth, authorize(["admin", "staff"]), async (req, res) => {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+
     const { notes, items, customer_id } = req.body;
     const operator_id = req.user.id;
 
-    // 1. Buat Header Transaksi (Sama)
+    // 1. Buat Header Transaksi
     const transResult = await client.query(
       "INSERT INTO transactions (type, notes, customer_id, operator_id, process_start, process_end) VALUES ('OUT', $1, $2, $3, NOW(), NOW()) RETURNING id",
       [notes, customer_id || null, operator_id]
@@ -112,6 +121,7 @@ router.post("/out", auth, authorize(["admin", "staff"]), async (req, res) => {
         batch_number,
         expiry_date,
       } = item;
+
       // 2a. Validasi Dasar
       if (quantity <= 0 || !product_id || !location_id || !stock_status_id) {
         throw new Error(
@@ -143,8 +153,9 @@ router.post("/out", auth, authorize(["admin", "staff"]), async (req, res) => {
           stock_status_id,
           batch_number || null,
           expiry_date || null,
-        ] // Simpan Batch/Expiry
+        ] // Simpan Status Stok
       );
+
       // 2d. Update Stok (Kurangi)
       await client.query(
         "UPDATE stock_levels SET quantity = quantity - $1 WHERE product_id = $2 AND location_id = $3",
@@ -161,11 +172,20 @@ router.post("/out", auth, authorize(["admin", "staff"]), async (req, res) => {
     }
 
     await client.query("COMMIT");
+
+    // --- Kirim Sinyal Realtime ---
+    req.io.emit("new_activity", {
+      message: "Aktivitas Outbound baru tercatat!",
+      type: "OUT",
+    });
+
     res.json({ msg: "Barang keluar berhasil dicatat!", transactionId });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(err.message);
-    res.status(400).json({ msg: err.message });
+    // Kirim pesan error yang jelas (status 400 jika error dari validasi stok)
+    const statusCode = err.message.includes("Stok tidak cukup") ? 400 : 500;
+    console.error("TRANSACTION OUT ERROR:", err.message);
+    res.status(statusCode).json({ msg: err.message });
   } finally {
     client.release();
   }
