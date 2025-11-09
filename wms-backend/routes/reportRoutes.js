@@ -490,4 +490,64 @@ router.get("/financial", async (req, res) => {
   }
 });
 
+router.get('/status-inventory', async (req, res) => {
+  try {
+    const { startDate, endDate, statusId } = req.query; 
+
+    let query = `
+      SELECT 
+        ti.id AS item_id,
+        t.date AS transaction_date,
+        p.sku,
+        p.name AS product_name,
+        l.name AS location_name,
+        ti.quantity,
+        ss.name AS stock_status_name, -- Nama Status (Rusak/Kadaluarsa)
+        ti.batch_number,
+        ti.expiry_date,
+        u.username AS operator_name
+      FROM transaction_items ti
+      JOIN transactions t ON ti.transaction_id = t.id
+      JOIN products p ON ti.product_id = p.id
+      JOIN locations l ON ti.location_id = l.id
+      JOIN stock_statuses ss ON ti.stock_status_id = ss.id
+      LEFT JOIN users u ON t.operator_id = u.id
+    `;
+    
+    let whereClauses = ["ss.name != 'Good'"]; // <-- HANYA AMBIL YANG BUKAN 'Good'
+    let queryParams = [];
+    let paramIndex = 0;
+
+    // Filter Tanggal
+    if (startDate && endDate) {
+        paramIndex++;
+        whereClauses.push(`t.date >= $${paramIndex}`);
+        queryParams.push(new Date(startDate));
+        
+        paramIndex++;
+        const end = new Date(endDate);
+        end.setDate(end.getDate() + 1); 
+        whereClauses.push(`t.date < $${paramIndex}`);
+        queryParams.push(end);
+    }
+    
+    // Filter Status Spesifik (misal: hanya 'Damaged')
+    if (statusId) {
+        paramIndex++;
+        whereClauses.push(`ti.stock_status_id = $${paramIndex}`); 
+        queryParams.push(parseInt(statusId));
+    }
+
+    query += ` WHERE ${whereClauses.join(' AND ')}`;
+    query += ` ORDER BY t.date DESC;`;
+
+    const result = await db.query(query, queryParams);
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error('ERROR IN /status-inventory:', err.message);
+    res.status(500).send('Server Error saat mengambil laporan status inventaris.');
+  }
+});
+
 module.exports = router;

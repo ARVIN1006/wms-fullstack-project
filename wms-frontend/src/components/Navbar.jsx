@@ -104,16 +104,58 @@ function Navbar() {
           )}
 
           {/* 2. GRUP ADMINISTRASI (Hanya Admin) */}
-         {isAdmin && (
+          {isAdmin && (
             <DropdownMenu title="Administrasi">
-              <Link to="/reports" className="block px-4 py-2 text-sm hover:bg-gray-100">Laporan Transaksi (IN/OUT)</Link>
-              <Link to="/reports/movement" className="block px-4 py-2 text-sm hover:bg-gray-100">Laporan Perpindahan</Link>
-              <Link to="/reports/performance" className="block px-4 py-2 text-sm hover:bg-gray-100">Laporan Kinerja</Link>
-              <Link to="/reports/customer-order" className="block px-4 py-2 text-sm hover:bg-gray-100">Laporan Pelanggan</Link>
-              <Link to="/reports/activity" className="block px-4 py-2 text-sm hover:bg-gray-100">Laporan Aktivitas User</Link> 
-              <Link to="/reports/financial" className="block px-4 py-2 text-sm hover:bg-gray-100 font-medium text-green-700">Laporan Keuangan</Link>
+              <Link
+                to="/reports"
+                className="block px-4 py-2 text-sm hover:bg-gray-100"
+              >
+                Laporan Transaksi (IN/OUT)
+              </Link>
+              <Link
+                to="/reports/movement"
+                className="block px-4 py-2 text-sm hover:bg-gray-100"
+              >
+                Laporan Perpindahan
+              </Link>
+              <Link
+                to="/reports/performance"
+                className="block px-4 py-2 text-sm hover:bg-gray-100"
+              >
+                Laporan Kinerja
+              </Link>
+              <Link
+                to="/reports/customer-order"
+                className="block px-4 py-2 text-sm hover:bg-gray-100"
+              >
+                Laporan Pelanggan
+              </Link>
+              <Link
+                to="/reports/activity"
+                className="block px-4 py-2 text-sm hover:bg-gray-100"
+              >
+                Laporan Aktivitas User
+              </Link>
+              <Link
+                to="/reports/status-inventory"
+                className="block px-4 py-2 text-sm hover:bg-gray-100 text-yellow-700"
+              >
+                Laporan Stok Rusak
+              </Link>
+
+              <Link
+                to="/reports/financial"
+                className="block px-4 py-2 text-sm hover:bg-gray-100 font-medium text-green-700"
+              >
+                Laporan Keuangan
+              </Link>
               <div className="border-t my-1"></div>
-              <Link to="/admin" className="block px-4 py-2 text-sm hover:bg-gray-100 font-medium text-red-600">Admin Control</Link>
+              <Link
+                to="/admin"
+                className="block px-4 py-2 text-sm hover:bg-gray-100 font-medium text-red-600"
+              >
+                Admin Control
+              </Link>
             </DropdownMenu>
           )}
         </div>

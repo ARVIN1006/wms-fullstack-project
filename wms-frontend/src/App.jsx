@@ -25,6 +25,8 @@ import PerformanceReport from "./pages/PerformanceReport";
 import FinancialReport from "./pages/FinancialReport";
 import UserActivityReport from "./pages/UserActivityReport";
 import CustomerOrderReport from "./pages/CustomerOrderReport";
+import StatusInventoryReport from './pages/StatusInventoryReport';
+
 
 import LoginPage from "./pages/Login";
 import AdminControl from "./pages/AdminControl";
@@ -74,18 +76,24 @@ function App() {
           <Route path="/customers" element={<CustomerList />} />
           <Route path="/movements" element={<MovementForm />} />
           <Route path="/transactions" element={<TransactionForm />} />
-
           {/* RUTE PELAPORAN (Pastikan Semua Ada) */}
           <Route path="/reports" element={<Reports />} />
           <Route path="/reports/movement" element={<MovementReport />} />
-          <Route path="/reports/performance" element={<PerformanceReport />} /> {/* <-- INI PERBAIKANNYA */}
+          <Route
+            path="/reports/performance"
+            element={<PerformanceReport />}
+          />{" "}
+          {/* <-- INI PERBAIKANNYA */}
           <Route path="/reports/activity" element={<UserActivityReport />} />
           <Route
             path="/reports/customer-order"
             element={<CustomerOrderReport />}
           />
           <Route path="/reports/financial" element={<FinancialReport />} />
-          
+          <Route
+            path="/reports/status-inventory"
+            element={<StatusInventoryReport />}
+          />
           {/* RUTE ADMIN/PROFILE */}
           <Route path="/admin" element={<AdminControl />} />
           <Route path="/profile" element={<Profile />} />
