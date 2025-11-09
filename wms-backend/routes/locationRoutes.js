@@ -38,16 +38,19 @@ router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
 
 // POST tambah lokasi baru (DI-UPGRADE dengan Kapasitas)
 router.post('/', auth, authorize(['admin']), async (req, res) => {
+  const client = await db.connect(); 
   try {
     const { name, description, max_capacity_m3 } = req.body;
     const newLocation = await client.query(
       'INSERT INTO locations (name, description, max_capacity_m3) VALUES ($1, $2, $3) RETURNING *',
-      [name, description, max_capacity_m3 || 100] // Default 100 jika tidak diisi
+      [name, description, max_capacity_m3 || 100] 
     );
     res.json(newLocation.rows[0]);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
+  } finally {
+    client.release(); 
   }
 });
 

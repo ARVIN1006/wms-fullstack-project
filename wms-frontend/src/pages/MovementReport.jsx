@@ -227,7 +227,7 @@ function MovementReport() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     {new Date(item.date).toLocaleString("id-ID")}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowTebak text-sm font-medium">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     {item.operator_name}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
