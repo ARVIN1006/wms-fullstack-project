@@ -75,16 +75,17 @@ function App() {
           <Route path="/movements" element={<MovementForm />} />
           <Route path="/transactions" element={<TransactionForm />} />
 
-          {/* RUTE PELAPORAN */}
+          {/* RUTE PELAPORAN (Pastikan Semua Ada) */}
           <Route path="/reports" element={<Reports />} />
           <Route path="/reports/movement" element={<MovementReport />} />
-          <Route path="/reports/performance" element={<PerformanceReport />} />
+          <Route path="/reports/performance" element={<PerformanceReport />} /> {/* <-- INI PERBAIKANNYA */}
           <Route path="/reports/activity" element={<UserActivityReport />} />
           <Route
             path="/reports/customer-order"
             element={<CustomerOrderReport />}
           />
           <Route path="/reports/financial" element={<FinancialReport />} />
+          
           {/* RUTE ADMIN/PROFILE */}
           <Route path="/admin" element={<AdminControl />} />
           <Route path="/profile" element={<Profile />} />

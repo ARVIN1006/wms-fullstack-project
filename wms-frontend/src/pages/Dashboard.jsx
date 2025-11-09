@@ -1,20 +1,31 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Bar } from 'react-chartjs-2'; 
-import { toast } from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { Bar } from "react-chartjs-2";
+import { toast } from "react-hot-toast";
+import { useAuth } from "../context/AuthContext";
 
 // Helper untuk format mata uang
 const formatCurrency = (amount) => {
-    return `Rp ${parseFloat(amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `Rp ${parseFloat(amount || 0).toLocaleString("id-ID", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 };
 
 // Helper untuk format icon
 const ActivityIcon = ({ type }) => {
-  if (type === 'IN') {
-    return <span className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center">📦</span>;
+  if (type === "IN") {
+    return (
+      <span className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
+        📦
+      </span>
+    );
   }
-  return <span className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center">🚚</span>;
+  return (
+    <span className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
+      🚚
+    </span>
+  );
 };
 
 function Dashboard() {
@@ -25,40 +36,39 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   // Role dari Context
-  const { userRole } = useAuth(); 
-  const isAdmin = userRole === 'admin';
+  const { userRole } = useAuth();
+  const isAdmin = userRole === "admin";
 
   // Fungsi untuk mengambil semua data dashboard
   async function fetchDashboardData() {
     try {
       setLoading(true);
-      
-      // Admin butuh data stok lengkap (untuk nilai aset), Staff hanya butuh basic
-      const stockApi = '/api/stocks'; 
+
+      const stockApi = "/api/stocks";
 
       // Panggil API (recent-activity mengizinkan Staff dan Admin)
-      const [productRes, locationRes, stockRes, lowStockRes, activityRes] = await Promise.all([
-        axios.get('/api/products?limit=1000'),
-        axios.get('/api/locations'),
-        axios.get(stockApi), // Ambil Stok Lengkap/Nilai Aset
-        axios.get('/api/stocks/low-stock?threshold=10'),
-        axios.get('/api/reports/recent-activity') // API yang mengizinkan Staff
-      ]);
+      const [productRes, locationRes, stockRes, lowStockRes, activityRes] =
+        await Promise.all([
+          axios.get("/api/products?limit=1000"),
+          axios.get("/api/locations"),
+          axios.get(stockApi), // Ambil Stok Lengkap/Nilai Aset
+          axios.get("/api/stocks/low-stock?threshold=10"),
+          axios.get("/api/reports/recent-activity"), // API yang mengizinkan Staff
+        ]);
 
       // Simpan data ringkasan
       setStats({
         productCount: productRes.data.products.length,
         locationCount: locationRes.data.length,
       });
-      
+
       // Simpan data stok dan peringatan
       setStocks(stockRes.data);
       setLowStockItems(lowStockRes.data);
       setRecentActivity(activityRes.data);
-
     } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        toast.error('Gagal memuat data dashboard.');
+        toast.error("Gagal memuat data dashboard.");
       }
     } finally {
       setLoading(false);
@@ -70,18 +80,16 @@ function Dashboard() {
   }, [userRole]); // Refresh jika role berubah
 
   // --- LOGIKA GRAFIK (Hanya untuk Admin) ---
-  const top5Stocks = stocks
-    .sort((a, b) => b.quantity - a.quantity) 
-    .slice(0, 5); 
+  const top5Stocks = stocks.sort((a, b) => b.quantity - a.quantity).slice(0, 5);
 
   const topStockData = {
-    labels: top5Stocks.map(item => item.product_name), 
+    labels: top5Stocks.map((item) => item.product_name),
     datasets: [
       {
-        label: 'Jumlah Stok',
-        data: top5Stocks.map(item => item.quantity), 
-        backgroundColor: 'rgba(59, 130, 246, 0.6)', 
-        borderColor: 'rgba(59, 130, 246, 1)',
+        label: "Jumlah Stok",
+        data: top5Stocks.map((item) => item.quantity),
+        backgroundColor: "rgba(59, 130, 246, 0.6)",
+        borderColor: "rgba(59, 130, 246, 1)",
         borderWidth: 1,
       },
     ],
@@ -90,16 +98,22 @@ function Dashboard() {
   const chartOptions = {
     responsive: true,
     plugins: {
-      legend: { position: 'top' },
-      title: { display: true, text: 'Top 5 Produk dengan Stok Terbanyak', font: { size: 16 } },
+      legend: { position: "top" },
+      title: {
+        display: true,
+        text: "Top 5 Produk dengan Stok Terbanyak",
+        font: { size: 16 },
+      },
     },
-    scales: { y: { beginAtZero: true } }
+    scales: { y: { beginAtZero: true } },
   };
   // --- Selesai Logika Grafik ---
 
   // --- Logika Perhitungan Nilai Total Stok ---
-  // API stocks sekarang mengembalikan kolom stock_value yang dihitung di backend
-  const totalStockValue = stocks.reduce((acc, item) => acc + parseFloat(item.stock_value || 0), 0);
+  const totalStockValue = stocks.reduce(
+    (acc, item) => acc + parseFloat(item.stock_value || 0),
+    0
+  );
 
   if (loading) {
     return <div className="p-6">Memuat data dashboard...</div>;
@@ -111,13 +125,17 @@ function Dashboard() {
 
       {/* Kartu Peringatan Stok Tipis */}
       {lowStockItems.length > 0 && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-lg" role="alert">
+        <div
+          className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-lg"
+          role="alert"
+        >
           <p className="font-bold text-lg">🚨 Peringatan Stok Tipis!</p>
           <ul className="list-disc list-inside">
-            {lowStockItems.map(item => (
-              <li key={item.product_id}>
-                <strong>{item.product_name}</strong> - Sisa: <span className="font-bold">{item.quantity}</span> unit
-                di Lokasi: {item.location_name}
+            {lowStockItems.map((item, index) => (
+              <li key={`low-${item.product_id}-${item.location_name || index}`}>
+                <strong>{item.product_name}</strong> - Sisa:{" "}
+                <span className="font-bold">{item.quantity}</span> unit di
+                Lokasi: {item.location_name}
               </li>
             ))}
           </ul>
@@ -127,101 +145,164 @@ function Dashboard() {
       {/* Kartu Stats Ringkasan */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-lg">
-          <h2 className="text-sm font-medium text-gray-500 uppercase">Total Produk</h2>
-          <p className="text-4xl font-bold text-blue-600">{stats.productCount}</p>
+          <h2 className="text-sm font-medium text-gray-500 uppercase">
+            Total Produk
+          </h2>
+          <p className="text-4xl font-bold text-blue-600">
+            {stats.productCount}
+          </p>
         </div>
         <div className="bg-white p-6 rounded-lg shadow-lg">
-          <h2 className="text-sm font-medium text-gray-500 uppercase">Total Lokasi</h2>
-          <p className="text-4xl font-bold text-purple-600">{stats.locationCount}</p>
+          <h2 className="text-sm font-medium text-gray-500 uppercase">
+            Total Lokasi
+          </h2>
+          <p className="text-4xl font-bold text-purple-600">
+            {stats.locationCount}
+          </p>
         </div>
-        
+
         {/* Total Nilai Stok (Hanya ditampilkan jika Admin) */}
         <div className="bg-white p-6 rounded-lg shadow-lg">
           <h2 className="text-sm font-medium text-gray-500 uppercase">
-             {isAdmin ? 'Total Nilai Stok (HPP)' : 'Total Unit Gudang'}
+            {isAdmin ? "Total Nilai Stok (HPP)" : "Total Unit Gudang"}
           </h2>
           <p className="text-4xl font-bold text-green-600">
-            {isAdmin ? formatCurrency(totalStockValue) : `${stocks.reduce((acc, item) => acc + parseInt(item.quantity || 0), 0)} unit`}
+            {isAdmin
+              ? formatCurrency(totalStockValue)
+              : `${stocks.reduce(
+                  (acc, item) => acc + parseInt(item.quantity || 0),
+                  0
+                )} unit`}
           </p>
         </div>
       </div>
 
       {/* Tata Letak Grafik & Aktivitas */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* KOTAK KIRI: GRAFIK (Hanya untuk Admin) */}
         {isAdmin && (
-            <div className="lg:col-span-2 bg-white p-6 shadow-lg rounded-lg">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Visualisasi Stok</h2>
-              <Bar options={chartOptions} data={topStockData} />
-            </div>
+          <div className="lg:col-span-2 bg-white p-6 shadow-lg rounded-lg">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">
+              Visualisasi Stok
+            </h2>
+            <Bar options={chartOptions} data={topStockData} />
+          </div>
         )}
 
         {/* KOTAK KANAN: Aktivitas Terkini (Untuk Semua Role) */}
-        <div className={`bg-white p-6 shadow-lg rounded-lg ${!isAdmin ? 'lg:col-span-3' : 'lg:col-span-1'}`}>
-          <h2 className="text-xl font-bold text-gray-800 mb-4">⏱️ Aktivitas Terkini</h2>
+        <div
+          className={`bg-white p-6 shadow-lg rounded-lg ${
+            !isAdmin ? "lg:col-span-3" : "lg:col-span-1"
+          }`}
+        >
+          <h2 className="text-xl font-bold text-gray-800 mb-4">
+            ⏱️ Aktivitas Terkini
+          </h2>
           <div className="space-y-4">
             {recentActivity.length === 0 && (
-              <p className="text-sm text-gray-500">Belum ada aktivitas tercatat.</p>
+              <p className="text-sm text-gray-500">
+                Belum ada aktivitas tercatat.
+              </p>
             )}
+            {/* PERBAIKAN KEY: Gunakan prefix 'act-' dan 'id' jika ada */}
             {recentActivity.map((act, index) => (
-              <div key={index} className="flex items-center gap-3">
+              <div
+                key={`act-${act.id || index}`}
+                className="flex items-center gap-3"
+              >
                 <ActivityIcon type={act.transaction_type} />
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-900">
-                    {act.transaction_type === 'IN' ? 'Barang Masuk: ' : 'Barang Keluar: '}
+                    {act.transaction_type === "IN"
+                      ? "Barang Masuk: "
+                      : "Barang Keluar: "}
                     <strong>{act.quantity} unit</strong> {act.product_name}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {new Date(act.transaction_date).toLocaleString('id-ID')}
+                    {new Date(act.transaction_date).toLocaleString("id-ID")}
                   </p>
                 </div>
               </div>
             ))}
           </div>
         </div>
-
       </div>
-      
+
       {/* Tabel Stok Gudang Saat Ini (Sama) */}
       <div className="bg-white p-6 shadow-lg rounded-lg mt-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Stok Gudang Saat Ini</h2>
+        <h2 className="text-xl font-bold text-gray-800 mb-4">
+          Stok Gudang Saat Ini
+        </h2>
         <div className="overflow-x-auto max-h-96">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50 sticky top-0"> 
+            <thead className="bg-gray-50 sticky top-0">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama Produk</th>
-                {isAdmin && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Harga Beli</th>}
-                {isAdmin && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nilai Stok</th>}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lokasi</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sisa Stok</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  SKU
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Nama Produk
+                </th>
+                {isAdmin && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Harga Beli
+                  </th>
+                )}
+                {isAdmin && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Nilai Stok
+                  </th>
+                )}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Lokasi
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Sisa Stok
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {stocks.length === 0 && (
                 <tr>
-                  <td colSpan={isAdmin ? "6" : "4"} className="px-6 py-4 text-center text-gray-500">
+                  <td
+                    colSpan={isAdmin ? "6" : "4"}
+                    className="px-6 py-4 text-center text-gray-500"
+                  >
                     Belum ada stok di gudang.
                   </td>
                 </tr>
               )}
+              {/* PERBAIKAN KEY: Gunakan prefix 'stock-' dan SKU (yang harus unik) */}
               {stocks.map((item, index) => (
-                <tr key={index}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.sku}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.product_name}</td>
+                <tr key={`stock-${item.sku}-${item.location_name}` || index}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.sku}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {item.product_name}
+                  </td>
                   {isAdmin && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700">
-                      Rp {parseFloat(item.purchase_price || 0).toLocaleString('id-ID')}
+                      Rp{" "}
+                      {parseFloat(item.purchase_price || 0).toLocaleString(
+                        "id-ID"
+                      )}
                     </td>
                   )}
                   {isAdmin && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-900">
-                      Rp {parseFloat(item.stock_value || 0).toLocaleString('id-ID')}
+                      Rp{" "}
+                      {parseFloat(item.stock_value || 0).toLocaleString(
+                        "id-ID"
+                      )}
                     </td>
                   )}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{item.location_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-lg font-bold text-gray-900">{item.quantity}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    {item.location_name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-lg font-bold text-gray-900">
+                    {item.quantity}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth');
-const authorize = require('../middleware/role'); 
+const authorize = require('../middleware/role');
+
 
 // Middleware: Hanya Admin yang boleh melihat semua laporan
-router.use(auth, authorize(['admin']));
 
 // ===============================================
 // 1. RUTE EXCEPTION (DIPERLUKAN STAFF/MASTER DATA)
@@ -22,6 +22,29 @@ router.get('/stock-statuses', auth, authorize(['admin', 'staff']), async (req, r
     res.status(500).send('Server Error saat mengambil status stok.');
   }
 });
+
+// GET /api/reports/recent-activity (Wajib untuk Dashboard)
+router.get('/recent-activity', auth, authorize(['admin', 'staff']), async (req, res) => {
+    try {
+        const query = `
+          SELECT 
+            t.id, t.date as transaction_date, t.type as transaction_type, ti.quantity,
+            p.name as product_name, p.sku
+          FROM transaction_items ti
+          JOIN transactions t ON ti.transaction_id = t.id
+          JOIN products p ON ti.product_id = p.id
+          ORDER BY t.date DESC
+          LIMIT 5;
+        `;
+        const result = await db.query(query);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('ERROR IN /recent-activity:', err.message);
+        res.status(500).send('Server Error saat mengambil aktivitas terbaru.');
+    }
+});
+
+router.use(auth, authorize(['admin']));
 
 
 // ===============================================
@@ -445,6 +468,5 @@ router.get('/financial', async (req, res) => {
     res.status(500).send('Server Error saat mengambil laporan keuangan.');
   }
 });
-
 
 module.exports = router;

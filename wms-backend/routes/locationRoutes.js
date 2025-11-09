@@ -2,20 +2,18 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth');
+const authorize = require('../middleware/role'); // <-- IMPOR authorize
 
-// GET semua lokasi
-router.get('/', auth, async (req, res) => {
+// GET semua lokasi (DI-UPDATE: Izinkan 'staff' membaca)
+router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
   try {
-    // Query ini melakukan LEFT JOIN dengan stock_levels untuk menghitung total stok
     const query = `
       SELECT 
         l.id,
         l.name,
         l.description,
-        -- Menggunakan COALESCE untuk mengembalikan 0 jika tidak ada stok di lokasi tersebut
         COALESCE(SUM(s.quantity), 0) AS total_stock 
       FROM locations l
-      -- LEFT JOIN agar lokasi yang TIDAK ada barangnya tetap muncul
       LEFT JOIN stock_levels s ON l.id = s.location_id 
       GROUP BY l.id, l.name, l.description
       ORDER BY l.name ASC;
@@ -29,8 +27,8 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// POST tambah lokasi baru
-router.post('/', auth, async (req, res) => {
+// POST tambah lokasi baru (DI-UPDATE: Hanya Admin)
+router.post('/', auth, authorize(['admin']), async (req, res) => {
   try {
     const { name, description } = req.body;
     const newLocation = await db.query(
@@ -43,5 +41,8 @@ router.post('/', auth, async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
+
+// PUT dan DELETE (Tambahkan authorize(['admin']))
+// ... (Tambahkan authorize(['admin']) ke rute PUT dan DELETE jika ada)
 
 module.exports = router;

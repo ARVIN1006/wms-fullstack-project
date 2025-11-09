@@ -10,10 +10,9 @@ router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
       SELECT 
         p.name as product_name,
         p.sku,
-        p.purchase_price, -- BARU: Ambil harga beli
+        p.purchase_price,
         l.name as location_name,
         s.quantity,
-        -- HITUNG NILAI STOK: quantity * purchase_price
         (s.quantity * p.purchase_price) AS stock_value
       FROM stock_levels s
       JOIN products p ON s.product_id = p.id
@@ -22,13 +21,15 @@ router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
     `;
     const result = await db.query(query);
     res.json(result.rows);
-  } catch (err) { /* ... */ }
+  } catch (err) { 
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
 });
 
 // GET /api/stocks/low-stock - (Mencari stok tipis)
-router.get('/low-stock', auth, async (req, res) => {
+router.get('/low-stock', auth, authorize(['admin', 'staff']), async (req, res) => {
   try {
-    // Tentukan batas stok tipis (default 10)
     const threshold = parseInt(req.query.threshold, 10) || 10;
 
     const query = `
