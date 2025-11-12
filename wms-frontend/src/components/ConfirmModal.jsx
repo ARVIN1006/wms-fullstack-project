@@ -1,10 +1,10 @@
 function ConfirmModal({ title, message, onConfirm, onCancel }) {
   return (
     // Latar belakang gelap (overlay)
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 transition-opacity duration-300">
       
-      {/* Kotak Modal */}
-      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+      {/* Kotak Modal - Tambahkan animasi modalIn */}
+      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm transform scale-95 opacity-0 animate-modalIn"> 
         <h2 className="text-xl font-bold mb-4 text-gray-800">{title}</h2>
         <p className="text-gray-600 mb-6">{message}</p>
         

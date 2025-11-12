@@ -147,14 +147,14 @@ function MovementForm() {
 
   if (loadingMaster) {
     return (
-      <div className="p-6 bg-white shadow-lg rounded-lg">
+      <div className="p-6 bg-white shadow-xl rounded-xl">
         <p className="text-gray-500 animate-pulse">Memuat data lokasi...</p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 bg-white shadow-lg rounded-lg max-w-3xl mx-auto">
+    <form onSubmit={handleSubmit} className="p-6 bg-white shadow-xl rounded-xl max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">🚚 Catat Perpindahan Barang</h1>
       
       {/* 1. Produk */}
@@ -171,7 +171,7 @@ function MovementForm() {
         />
       </div>
 
-      {/* 2. Lokasi Asal & Tujuan */}
+      {/* 2. Lokasi Asal & Tujuan - grid-cols-1 di mobile, grid-cols-2 di md */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
         <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Dari Lokasi (Asal) *</label>
@@ -196,7 +196,7 @@ function MovementForm() {
         </div>
       </div>
 
-      {/* 3. Jumlah & Alasan */}
+      {/* 3. Jumlah & Alasan - grid-cols-1 di mobile, grid-cols-2 di md */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Unit *</label>

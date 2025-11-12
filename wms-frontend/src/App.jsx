@@ -4,6 +4,7 @@ import {
   Route,
   Outlet,
   Navigate,
+  useLocation, // Import useLocation untuk memicu re-render
 } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { useAuth } from "./context/AuthContext";
@@ -32,6 +33,23 @@ import LoginPage from "./pages/Login";
 import AdminControl from "./pages/AdminControl";
 import Profile from "./pages/Profile";
 
+
+// --- BARU: Komponen Wrapper Animasi Sederhana ---
+function PageWrapper() {
+  const location = useLocation();
+  // key={location.pathname} memaksa React merender ulang element div, yang kemudian memicu CSS animation
+  return (
+    <div 
+      key={location.pathname}
+      className="animate-fadeInSlideUp" // Kelas animasi baru
+    >
+      <Outlet />
+    </div>
+  );
+}
+// --- SELESAI KOMPONEN BARU ---
+
+
 function MainLayout() {
   const { isAuthenticated } = useAuth();
   if (!isAuthenticated) {
@@ -42,7 +60,8 @@ function MainLayout() {
     <div className="min-h-screen bg-gray-100">
       <Navbar />
       <div className="container mx-auto py-6">
-        <Outlet />
+        {/* Menggunakan PageWrapper untuk animasi per rute */}
+        <PageWrapper /> 
       </div>
     </div>
   );
@@ -69,6 +88,7 @@ function App() {
 
         {/* RUTE AMAN / PROTECTED */}
         <Route element={<MainLayout />}>
+          {/* Semua rute kini di-handle di dalam Outlet MainLayout */}
           <Route path="/" element={<Dashboard />} />
           <Route path="/products" element={<ProductList />} />
           <Route path="/suppliers" element={<SupplierList />} />
@@ -77,14 +97,12 @@ function App() {
           <Route path="/movements" element={<MovementForm />} />
           <Route path="/stock-opname" element={<StockOpname />} />
           <Route path="/transactions" element={<TransactionForm />} />
-          {/* RUTE PELAPORAN (Pastikan Semua Ada) */}
           <Route path="/reports" element={<Reports />} />
           <Route path="/reports/movement" element={<MovementReport />} />
           <Route
             path="/reports/performance"
             element={<PerformanceReport />}
-          />{" "}
-          {/* <-- INI PERBAIKANNYA */}
+          />
           <Route path="/reports/activity" element={<UserActivityReport />} />
           <Route
             path="/reports/customer-order"
@@ -95,7 +113,6 @@ function App() {
             path="/reports/status-inventory"
             element={<StatusInventoryReport />}
           />
-          {/* RUTE ADMIN/PROFILE */}
           <Route path="/admin" element={<AdminControl />} />
           <Route path="/profile" element={<Profile />} />
         </Route>

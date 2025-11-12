@@ -2,7 +2,18 @@ const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
 const auth = require("../middleware/auth");
-const authorize = require("../middleware/role"); // Perbaikan typo require
+const authorize = require("../middleware/role");
+
+// ====================================================
+// DAFTAR FIELD SORTING YANG DIIZINKAN (BARU)
+// ====================================================
+const ALLOWED_SORT_FIELDS = [
+  "transaction_date",
+  "product_name",
+  "quantity",
+  "transaction_value",
+  "operator_name",
+];
 
 // ====================================================
 // FUNGSI VALIDASI TAMBAHAN
@@ -49,15 +60,15 @@ router.get(
   async (req, res) => {
     try {
       const query = `
-      SELECT 
-        t.id, t.date AS transaction_date, t.type AS transaction_type, ti.quantity,
-        p.name AS product_name, p.sku
-      FROM transaction_items ti
-      JOIN transactions t ON ti.transaction_id = t.id
-      JOIN products p ON ti.product_id = p.id
-      ORDER BY t.date DESC
-      LIMIT 5;
-    `;
+        SELECT 
+          t.id, t.date AS transaction_date, t.type AS transaction_type, ti.quantity,
+          p.name AS product_name, p.sku
+        FROM transaction_items ti
+        JOIN transactions t ON ti.transaction_id = t.id
+        JOIN products p ON ti.product_id = p.id
+        ORDER BY t.date DESC
+        LIMIT 5;
+      `;
       const result = await db.query(query);
       res.json(result.rows);
     } catch (err) {
@@ -75,14 +86,97 @@ router.use(auth, authorize(["admin"]));
 // ====================================================
 router.get("/history", async (req, res) => {
   try {
-    const { limit, type, supplierId, customerId, startDate, endDate } =
-      req.query;
+    const {
+      limit = 20, // Default limit
+      page = 1, // Default page
+      type,
+      supplierId,
+      customerId,
+      startDate,
+      endDate,
+      sortBy = "date", // Default sort column di tabel transactions
+      sortOrder = "DESC", // Default sort order
+    } = req.query;
+
+    const parsedLimit = parseInt(limit, 10);
+    const parsedPage = parseInt(page, 10);
+    const offset = (parsedPage - 1) * parsedLimit;
 
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
     if (!validateDateRange(start, end, res)) return;
 
-    let query = `
+    let queryParams = [];
+    let whereClauses = [];
+    let i = 0;
+
+    if (type) {
+      i++;
+      whereClauses.push(`t.type = $${i}`);
+      queryParams.push(type);
+    }
+    if (supplierId) {
+      i++;
+      whereClauses.push(`t.supplier_id = $${i}`);
+      queryParams.push(supplierId);
+    }
+    if (customerId) {
+      i++;
+      whereClauses.push(`t.customer_id = $${i}`);
+      queryParams.push(customerId);
+    }
+    if (start) {
+      i++;
+      whereClauses.push(`t.date >= $${i}`);
+      queryParams.push(start);
+    }
+    if (end) {
+      i++;
+      end.setDate(end.getDate() + 1);
+      whereClauses.push(`t.date < $${i}`);
+      queryParams.push(end);
+    }
+
+    const whereString =
+      whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
+
+    // 1. Query COUNT (menggunakan filter)
+    const countQuery = `
+      SELECT COUNT(ti.id)
+      FROM transaction_items ti
+      JOIN transactions t ON ti.transaction_id = t.id
+      LEFT JOIN suppliers s ON t.supplier_id = s.id
+      LEFT JOIN customers c ON t.customer_id = c.id
+      ${whereString};
+    `;
+    const countResult = await db.query(countQuery, queryParams);
+    const totalCount = parseInt(countResult.rows[0].count, 10);
+    const totalPages = Math.ceil(totalCount / parsedLimit);
+
+    // 2. Tentukan field sorting yang aman
+    const safeSortField = ALLOWED_SORT_FIELDS.includes(sortBy)
+      ? sortBy
+      : sortBy === "transaction_date"
+      ? "t.date"
+      : "t.date"; // Default ke t.date
+    const order = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
+
+    // PENTING: Untuk sorting field di tabel JOIN, gunakan alias yang sesuai (misal: p.name)
+    const orderByClause = `ORDER BY 
+      ${
+        sortBy === "product_name"
+          ? "p.name"
+          : sortBy === "transaction_value"
+          ? "transaction_value"
+          : sortBy === "operator_name"
+          ? "u.username"
+          : sortBy === "quantity"
+          ? "ti.quantity"
+          : "t.date"
+      } ${order}`;
+
+    // 3. Query DATA (menggunakan filter, sorting, limit, offset)
+    const dataQuery = `
       SELECT 
         ti.id AS item_id,
         t.id, t.date AS transaction_date, t.type AS transaction_type, t.notes,
@@ -105,49 +199,25 @@ router.get("/history", async (req, res) => {
       LEFT JOIN customers c ON t.customer_id = c.id
       LEFT JOIN users u ON t.operator_id = u.id
       LEFT JOIN stock_statuses ts ON ti.stock_status_id = ts.id
+      ${whereString} 
+      ${orderByClause} 
+      LIMIT $${queryParams.length + 1} 
+      OFFSET $${queryParams.length + 2}
     `;
 
-    let whereClauses = [];
-    let params = [];
-    let i = 0;
+    // Tambahkan limit dan offset ke parameter
+    queryParams.push(parsedLimit);
+    queryParams.push(offset);
 
-    if (type) {
-      i++;
-      whereClauses.push(`t.type = $${i}`);
-      params.push(type);
-    }
-    if (supplierId) {
-      i++;
-      whereClauses.push(`t.supplier_id = $${i}`);
-      params.push(supplierId);
-    }
-    if (customerId) {
-      i++;
-      whereClauses.push(`t.customer_id = $${i}`);
-      params.push(customerId);
-    }
-    if (start) {
-      i++;
-      whereClauses.push(`t.date >= $${i}`);
-      params.push(start);
-    }
-    if (end) {
-      i++;
-      end.setDate(end.getDate() + 1);
-      whereClauses.push(`t.date < $${i}`);
-      params.push(end);
-    }
+    const dataResult = await db.query(dataQuery, queryParams);
 
-    if (whereClauses.length > 0)
-      query += ` WHERE ${whereClauses.join(" AND ")}`;
-    query += ` ORDER BY t.date DESC`;
-    if (limit) {
-      params.push(parseInt(limit));
-      query += ` LIMIT $${params.length}`;
-    }
-
-    const result = await db.query(query, params);
-    res.json(result.rows);
+    // Mengembalikan data dan metadata pagination
+    res.json({
+      reports: dataResult.rows,
+      totalPages,
+      currentPage: parsedPage,
+      totalCount,
+    });
   } catch (err) {
     console.error("ERROR IN /history:", err.message);
     res.status(500).send("Server Error saat mengambil laporan transaksi.");
@@ -270,9 +340,9 @@ router.get("/activity", async (req, res) => {
     const query = `
       WITH UserActivities AS (
         SELECT operator_id, 
-               CASE WHEN type = 'IN' THEN 'Inbound' 
-                    WHEN type = 'OUT' THEN 'Outbound' 
-                    ELSE 'Transaction' END AS activity_type
+          CASE WHEN type = 'IN' THEN 'Inbound' 
+               WHEN type = 'OUT' THEN 'Outbound' 
+               ELSE 'Transaction' END AS activity_type
         FROM transactions
         WHERE (date >= $1::date AND date < $2::date)
           AND ($3::int IS NULL OR operator_id = $3::int)
@@ -433,7 +503,7 @@ router.get("/financial", async (req, res) => {
       JOIN transaction_items ti ON t.id = ti.transaction_id
       JOIN products p ON ti.product_id = p.id
       ${whereStr} AND t.type = 'OUT';
-    `,
+      `,
       params
     );
 
@@ -452,7 +522,7 @@ router.get("/financial", async (req, res) => {
       ${whereStr} AND t.type = 'OUT'
       GROUP BY p.sku, p.name 
       ORDER BY product_gross_profit DESC;
-    `,
+      `,
       params
     );
 
