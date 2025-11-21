@@ -27,8 +27,8 @@ function LoginPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="p-8 bg-white shadow-xl rounded-xl w-full max-w-sm border border-gray-200"> {/* Added border and shadow-xl for better look */}
-        <h1 className="text-4xl font-extrabold text-center text-blue-700 mb-8"> {/* Changed to blue-700 and 4xl */}
+      <div className="p-8 bg-white shadow-lg rounded-lg w-full max-w-sm">
+        <h1 className="text-3xl font-bold text-center text-blue-600 mb-6">
           WMS Login
         </h1>
         <form onSubmit={handleSubmit}>
@@ -43,7 +43,7 @@ function LoginPage() {
               name="username" // <-- FIX: Tambah NAME (untuk Autofill)
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               required
             />
           </div>
@@ -57,7 +57,7 @@ function LoginPage() {
               name="password" // <-- FIX: Tambah NAME (untuk Autofill)
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               required
             />
           </div>
@@ -66,8 +66,7 @@ function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            // Mengubah ke blue-700 untuk kontras yang lebih baik dan rounded-lg
-            className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 px-4 rounded-lg transition disabled:bg-gray-400" 
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition disabled:bg-gray-400"
           >
             {loading ? 'Loading...' : 'Login'}
           </button>

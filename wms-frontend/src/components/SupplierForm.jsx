@@ -35,9 +35,9 @@ function SupplierForm({ onSave, onClose, supplierToEdit }) {
 
   return (
     // Latar belakang gelap (overlay)
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 transition-opacity duration-300">
-      {/* Kotak Modal - Tambahkan animasi modalIn */}
-      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md transform scale-95 opacity-0 animate-modalIn">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+      {/* Kotak Modal */}
+      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
         <h2 className="text-2xl font-bold mb-4">
           {supplierToEdit ? 'Edit Supplier' : 'Tambah Supplier Baru'}
         </h2>

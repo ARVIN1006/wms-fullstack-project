@@ -168,13 +168,12 @@ function TransactionForm() {
       for (const item of items) {
         if (!item.product || !item.location) continue;
 
-        // Cari lokasi terbaru dari state `locations`
+        const productVolume = item.volume_m3;
+        const totalVolumeToMove = item.quantity * productVolume;
+
         const loc = locations.find((l) => l.id === item.location.value);
 
         if (loc) {
-          const productVolume = item.volume_m3;
-          const totalVolumeToMove = item.quantity * productVolume;
-
           const currentVolumeUsed = parseFloat(loc.current_volume_used || 0);
           const maxCapacity = parseFloat(loc.max_capacity_m3 || 0);
           const availableSpace = maxCapacity - currentVolumeUsed;
@@ -212,8 +211,6 @@ function TransactionForm() {
       return;
     }
 
-    // Jika OUT, pastikan kita tidak mengirim supplier_id (walau payload sudah menghandle null)
-
     const formattedItems = items.map((item) => ({
       product_id: item.product.value,
       location_id: item.location.value,
@@ -229,7 +226,6 @@ function TransactionForm() {
       notes,
       items: formattedItems,
       supplier_id: transactionType === "IN" ? selectedSupplier?.value : null,
-      customer_id: transactionType === "OUT" ? null : null, // Tambahkan customer_id jika diperlukan
     };
 
     const endpoint =
@@ -241,11 +237,6 @@ function TransactionForm() {
       await axios.post(endpoint, payload);
       toast.success("Transaksi berhasil dicatat!");
 
-      // Refresh data locations untuk update ketersediaan volume
-      const locationRes = await axios.get("/api/locations");
-      setLocations(locationRes.data);
-
-      // Reset form
       setNotes("");
       setSelectedSupplier(null);
       setItems([
@@ -263,6 +254,9 @@ function TransactionForm() {
           volume_m3: 0,
         },
       ]);
+
+      const locationRes = await axios.get("/api/locations");
+      setLocations(locationRes.data);
     } catch (err) {
       const errorMsg = err.response?.data?.msg || "Gagal mencatat transaksi.";
       toast.error(errorMsg);
@@ -273,14 +267,14 @@ function TransactionForm() {
 
   if (loadingMaster) {
     return (
-      <div className="p-6 bg-white shadow-xl rounded-xl">
+      <div className="p-6 bg-white shadow-lg rounded-lg">
         <p className="text-gray-500 animate-pulse">Memuat data master...</p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 bg-white shadow-xl rounded-xl">
+    <form onSubmit={handleSubmit} className="p-6 bg-white shadow-lg rounded-lg">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">
         Buat Transaksi Baru
       </h1>
@@ -293,10 +287,10 @@ function TransactionForm() {
           <button
             type="button"
             onClick={() => setTransactionType("IN")}
-            className={`py-2 px-4 rounded transition ${
+            className={`py-2 px-4 rounded ${
               transactionType === "IN"
                 ? "bg-green-600 text-white"
-                : "bg-gray-200 hover:bg-gray-300"
+                : "bg-gray-200"
             }`}
           >
             Barang Masuk
@@ -304,10 +298,10 @@ function TransactionForm() {
           <button
             type="button"
             onClick={() => setTransactionType("OUT")}
-            className={`py-2 px-4 rounded transition ${
+            className={`py-2 px-4 rounded ${
               transactionType === "OUT"
                 ? "bg-red-600 text-white"
-                : "bg-gray-200 hover:bg-gray-300"
+                : "bg-gray-200"
             }`}
           >
             Barang Keluar
@@ -319,7 +313,7 @@ function TransactionForm() {
         {transactionType === "IN" && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Supplier *
+              Supplier
             </label>
             <Select
               options={supplierOptions}
@@ -329,10 +323,7 @@ function TransactionForm() {
             />
           </div>
         )}
-        {/* Mengambil sisa 1 atau 2 kolom, menyesuaikan dengan IN/OUT */}
-        <div
-          className={transactionType === "IN" ? "col-span-1" : "md:col-span-2"}
-        >
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Catatan
           </label>
@@ -352,21 +343,20 @@ function TransactionForm() {
         {items.map((item, index) => (
           <div
             key={index}
-            className="relative p-4 border rounded-lg bg-gray-50 hover:bg-white transition duration-200" // Ditambahkan efek hover
+            className="relative p-4 border rounded-md bg-gray-50"
           >
             {items.length > 1 && (
               <button
                 type="button"
                 onClick={() => handleRemoveItem(index)}
-                className="absolute top-2 right-2 h-7 w-7 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full flex items-center justify-center transition"
+                className="absolute top-2 right-2 h-7 w-7 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full flex items-center justify-center"
               >
                 &times;
               </button>
             )}
 
-            {/* --- BARIS UTAMA (4 kolom di Desktop, 2 kolom di Mobile) --- */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="col-span-2 md:col-span-2">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700">
                   Scan SKU/Barcode *
                 </label>
@@ -422,8 +412,7 @@ function TransactionForm() {
               </div>
             </div>
 
-            {/* --- BARIS DETAIL (4 kolom di Desktop, 2 kolom di Mobile) --- */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Harga {transactionType === "IN" ? "Beli" : "Jual"}
@@ -499,7 +488,7 @@ function TransactionForm() {
       <button
         type="button"
         onClick={handleAddItem}
-        className="mb-6 bg-gray-200 hover:bg-blue-100 text-gray-800 font-medium py-2 px-4 rounded transition border border-gray-300"
+        className="mb-6 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded transition"
       >
         + Tambah Baris Barang
       </button>

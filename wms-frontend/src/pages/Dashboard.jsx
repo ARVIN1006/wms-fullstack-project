@@ -92,15 +92,14 @@ function Dashboard() {
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 5);
 
-  // Mengubah warna grafik ke warna blue/indigo yang baru (blue-600)
   const topStockData = {
     labels: top5Stocks.map((item) => item.product_name),
     datasets: [
       {
         label: "Jumlah Stok",
         data: top5Stocks.map((item) => item.quantity),
-        backgroundColor: "rgba(79, 70, 229, 0.8)", // blue-600 shade
-        borderColor: "rgba(79, 70, 229, 1)",      // blue-600
+        backgroundColor: "rgba(59, 130, 246, 0.6)",
+        borderColor: "rgba(59, 130, 246, 1)",
         borderWidth: 1,
       },
     ],
@@ -148,35 +147,31 @@ function Dashboard() {
         </div>
       )}
 
-      {/* STATISTIK RINGKAS - Ditambahkan efek hover */}
+      {/* STATISTIK RINGKAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        
-        {/* Total Produk */}
-        <div className="bg-blue-100 p-6 rounded-xl shadow-lg border-b-4 border-blue-500 transition duration-300 hover:shadow-2xl hover:scale-[1.02]">
-          <h2 className="text-sm font-medium text-gray-700 uppercase">
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <h2 className="text-sm font-medium text-gray-500 uppercase">
             Total Produk
           </h2>
-          <p className="text-4xl font-extrabold text-blue-800 mt-1">
+          <p className="text-4xl font-bold text-blue-600">
             {stats.productCount}
           </p>
         </div>
 
-        {/* Total Lokasi */}
-        <div className="bg-white p-6 rounded-xl shadow-lg border-l-4 border-purple-500 transition duration-300 hover:shadow-2xl hover:scale-[1.02]">
+        <div className="bg-white p-6 rounded-lg shadow-lg">
           <h2 className="text-sm font-medium text-gray-500 uppercase">
             Total Lokasi
           </h2>
-          <p className="text-4xl font-bold text-purple-600 mt-1">
+          <p className="text-4xl font-bold text-purple-600">
             {stats.locationCount}
           </p>
         </div>
 
-        {/* Total Nilai Stok */}
-        <div className="bg-white p-6 rounded-xl shadow-lg border-l-4 border-green-500 transition duration-300 hover:shadow-2xl hover:scale-[1.02]">
+        <div className="bg-white p-6 rounded-lg shadow-lg">
           <h2 className="text-sm font-medium text-gray-500 uppercase">
             {isAdmin ? "Total Nilai Stok (HPP)" : "Total Unit Gudang"}
           </h2>
-          <p className="text-4xl font-bold text-green-600 mt-1">
+          <p className="text-4xl font-bold text-green-600">
             {isAdmin
               ? formatCurrency(totalStockValue)
               : `${stocks.reduce(
@@ -189,9 +184,9 @@ function Dashboard() {
 
       {/* GRAFIK + AKTIVITAS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Grafik (Admin saja) - Ditambahkan efek hover */}
+        {/* Grafik (Admin saja) */}
         {isAdmin && (
-          <div className="lg:col-span-2 bg-white p-6 shadow-xl rounded-xl transition duration-300 hover:shadow-2xl">
+          <div className="lg:col-span-2 bg-white p-6 shadow-lg rounded-lg">
             <h2 className="text-xl font-bold text-gray-800 mb-4">
               Visualisasi Stok
             </h2>
@@ -199,9 +194,9 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Aktivitas Terkini - Ditambahkan efek hover */}
+        {/* Aktivitas Terkini */}
         <div
-          className={`bg-white p-6 shadow-xl rounded-xl transition duration-300 hover:shadow-2xl ${
+          className={`bg-white p-6 shadow-lg rounded-lg ${
             !isAdmin ? "lg:col-span-3" : "lg:col-span-1"
           }`}
         >
@@ -237,8 +232,8 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* TABEL STOK GUDANG - Ditambahkan efek hover */}
-      <div className="bg-white p-6 shadow-xl rounded-xl mt-6 transition duration-300 hover:shadow-2xl">
+      {/* TABEL STOK GUDANG */}
+      <div className="bg-white p-6 shadow-lg rounded-lg mt-6">
         <h2 className="text-xl font-bold text-gray-800 mb-4">
           Stok Gudang Saat Ini
         </h2>
