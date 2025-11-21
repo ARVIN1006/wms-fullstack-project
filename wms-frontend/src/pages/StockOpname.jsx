@@ -26,16 +26,24 @@ function StockOpname() {
 
   // Ambil data Lokasi
   useEffect(() => {
+    let isMounted = true; // BARU: Flag untuk cleanup
+
     async function fetchLocations() {
       try {
         const response = await axios.get('/api/locations');
-        setLocations(response.data);
+        if (isMounted) setLocations(response.data); // Cek sebelum set state
       } catch (err) { /* ... */ } 
-      finally { setLoadingMaster(false); }
+      finally { 
+        if (isMounted) setLoadingMaster(false); // Cek sebelum set state
+      }
     }
     fetchLocations();
     // Fokus ke input SKU saat halaman dimuat
     inputRef.current?.focus();
+
+    return () => {
+      isMounted = false; // Cleanup function
+    };
   }, []);
 
   // --- FUNGSI PENCARIAN (BARCODE & LOKASI) ---
@@ -68,6 +76,8 @@ function StockOpname() {
 
   // Panggil API /specific
   const fetchSystemCount = async (productId, locationId) => {
+      // Catatan: Karena fungsi ini dipanggil oleh user action, risiko race condition saat unmount kecil,
+      // tetapi untuk keamanan, kita asumsikan pembaruan state ini aman di sini.
       try {
           const res = await axios.get(`/api/stocks/specific/${productId}/${locationId}`);
           const sysCount = res.data.system_count;

@@ -7,23 +7,28 @@ function PerformanceReport() {
   const [loading, setLoading] = useState(true);
 
   // Fungsi untuk mengambil data dari backend
-  async function fetchReports() {
+  async function fetchReports(isMounted) { // BARU: Terima flag isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true); // Cek sebelum set loading
       // Panggil API kinerja baru
       const response = await axios.get('/api/reports/performance'); 
-      setReports(response.data);
+      if (isMounted) setReports(response.data); // Cek sebelum set state
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error('Gagal memuat laporan kinerja.');
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false); // Cek sebelum set loading
     }
   }
 
   useEffect(() => {
-    fetchReports();
+    let isMounted = true; // BARU: Flag untuk cleanup
+    fetchReports(isMounted); // Kirim flag ke fungsi fetch
+    
+    return () => {
+        isMounted = false; // Cleanup function
+    };
   }, []);
   
   // Helper untuk mendapatkan label yang bagus

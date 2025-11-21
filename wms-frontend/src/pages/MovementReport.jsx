@@ -37,22 +37,6 @@ function MovementReport() {
     }));
   };
 
-  // Ambil lokasi & data laporan (dipanggil saat filter berubah)
-  useEffect(() => {
-    async function fetchLocations() {
-      try {
-        const response = await axios.get("/api/locations");
-        setLocations(response.data);
-      } catch (err) {
-        toast.error("Gagal memuat data lokasi master.");
-      }
-    }
-    fetchLocations();
-
-    // Panggil fetchReports saat komponen dimuat
-    fetchReports();
-  }, []);
-
   // Fungsi Pencarian Produk Asynchronous (untuk filter)
   const loadProductOptions = async (inputValue) => {
     try {
@@ -70,9 +54,9 @@ function MovementReport() {
   };
 
   // --- FUNGSI FETCH REPORTS (DI-UPGRADE) ---
-  async function fetchReports() {
+  async function fetchReports(isMounted) { // BARU: Terima flag isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true); // Cek sebelum set loading
 
       // Persiapan filter query
       const params = {
@@ -84,20 +68,41 @@ function MovementReport() {
       };
 
       const response = await axios.get("/api/reports/movements", { params });
-      setReports(response.data);
+      if (isMounted) setReports(response.data); // Cek sebelum set state
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error("Gagal memuat data laporan pergerakan.");
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false); // Cek sebelum set loading
     }
   }
+  
+  // --- Perbaikan useEffect dengan Cleanup Function ---
+  useEffect(() => {
+    let isMounted = true; // BARU: Flag untuk cleanup
+
+    async function fetchLocations() {
+      try {
+        const response = await axios.get("/api/locations");
+        if (isMounted) setLocations(response.data); // Cek sebelum set state
+      } catch (err) {
+        if (isMounted) toast.error("Gagal memuat data lokasi master.");
+      }
+    }
+    
+    fetchLocations();
+    fetchReports(isMounted); // Muat laporan awal
+    
+    return () => {
+        isMounted = false; // Cleanup function
+    };
+  }, []);
 
   // Handler saat tombol 'Filter' diklik
   const handleFilterSubmit = (e) => {
     e.preventDefault();
-    fetchReports(); // Muat ulang data dengan filter baru
+    fetchReports(true); // Muat ulang data dengan filter baru
   };
 
   const locationOptions = [

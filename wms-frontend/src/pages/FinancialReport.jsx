@@ -24,9 +24,9 @@ function FinancialReport() {
   const { userRole } = useAuth();
 
   // Ambil data laporan dari backend
-  async function fetchFinancialReport() {
+  async function fetchFinancialReport(isMounted) { // BARU: Terima flag isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true); // Cek sebelum set loading
       
       const params = {
           startDate: startDate || undefined,
@@ -34,24 +34,29 @@ function FinancialReport() {
       };
       
       const response = await axios.get('/api/reports/financial', { params }); 
-      setReportData(response.data);
+      if (isMounted) setReportData(response.data); // Cek sebelum set state
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error('Gagal memuat laporan keuangan. Akses ditolak.');
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false); // Cek sebelum set loading
     }
   }
 
   useEffect(() => {
-    fetchFinancialReport();
+    let isMounted = true; // BARU: Flag untuk cleanup
+    fetchFinancialReport(isMounted); // Kirim flag ke fungsi fetch
+    
+    return () => {
+        isMounted = false; // Cleanup function
+    };
   }, []); 
   
   // Handler Submit Filter
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchFinancialReport();
+      fetchFinancialReport(true); // Re-fetch
   }
 
   // --- LOGIKA GRAFIK ---

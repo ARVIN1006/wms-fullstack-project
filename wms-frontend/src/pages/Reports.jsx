@@ -59,34 +59,10 @@ function Reports() {
       }));
   }
 
-  // --- Ambil Data Master & Laporan saat Awal ---
-  useEffect(() => {
-    async function fetchMasterAndReports() {
-        setLoading(true);
-        try {
-            // Fetch Supplier dan Customer untuk dropdown filter
-            const [supplierRes, customerRes] = await Promise.all([
-                axios.get('/api/suppliers?page=1&limit=1000'),
-                axios.get('/api/customers?page=1&limit=1000')
-            ]);
-            setSuppliers(supplierRes.data.suppliers);
-            setCustomers(customerRes.data.customers);
-            
-            // Muat Laporan Awal
-            fetchReports();
-
-        } catch (err) {
-            toast.error('Gagal memuat data master untuk filter.');
-            setLoading(false);
-        }
-    }
-    fetchMasterAndReports();
-  }, []);
-
   // --- FUNGSI UTAMA FETCH REPORTS (DENGAN FILTER) ---
-  async function fetchReports() {
+  async function fetchReports(isMounted) { // BARU: Terima flag isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true); // Cek sebelum set loading
       
       const params = {
           limit: undefined, 
@@ -98,20 +74,55 @@ function Reports() {
       };
 
       const response = await axios.get('/api/reports/history', { params }); 
-      setReports(response.data);
+      if (isMounted) setReports(response.data); // Cek sebelum set state
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
           toast.error('Gagal memuat data laporan transaksi.');
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false); // Cek sebelum set loading
     }
   }
+
+  // --- Ambil Data Master & Laporan saat Awal ---
+  useEffect(() => {
+    let isMounted = true; // BARU: Flag untuk cleanup
+
+    async function fetchMasterAndReports() {
+        if (isMounted) setLoading(true);
+        try {
+            // Fetch Supplier dan Customer untuk dropdown filter
+            const [supplierRes, customerRes] = await Promise.all([
+                axios.get('/api/suppliers?page=1&limit=1000'),
+                axios.get('/api/customers?page=1&limit=1000')
+            ]);
+            
+            if (isMounted) { // Cek sebelum set state
+              setSuppliers(supplierRes.data.suppliers);
+              setCustomers(customerRes.data.customers);
+            }
+            
+            // Muat Laporan Awal
+            fetchReports(isMounted); // Kirim flag ke fungsi fetchReports
+
+        } catch (err) {
+            if (isMounted) {
+                toast.error('Gagal memuat data master untuk filter.');
+                setLoading(false);
+            }
+        }
+    }
+    fetchMasterAndReports();
+    
+    return () => {
+        isMounted = false; // Cleanup function
+    };
+  }, []);
 
   // Handler saat tombol 'Tampilkan Laporan' diklik
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchReports();
+      fetchReports(true); // Panggil ulang dengan state filter saat ini
   }
   
   // Opsi Dropdown Supplier/Customer yang dinamis

@@ -33,19 +33,27 @@ function MovementForm() {
 
   // Ambil data master (Lokasi)
   useEffect(() => {
+    let isMounted = true; // BARU: Flag untuk cleanup
+
     async function fetchLocations() {
       try {
         const response = await axios.get('/api/locations');
-        setLocations(response.data);
+        if (isMounted) { // Cek sebelum set state
+          setLocations(response.data);
+        }
       } catch (err) {
-        if (err.response?.status !== 401) {
+        if (isMounted && err.response?.status !== 401) {
           toast.error("Gagal memuat data lokasi.");
         }
       } finally {
-        setLoadingMaster(false);
+        if (isMounted) setLoadingMaster(false); // Cek sebelum set state
       }
     }
     fetchLocations();
+
+    return () => {
+      isMounted = false; // Cleanup function
+    };
   }, []);
 
   // Fungsi Pencarian Produk Asynchronous

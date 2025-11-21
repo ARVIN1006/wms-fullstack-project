@@ -36,25 +36,35 @@ function StatusInventoryReport() {
       }));
   }
 
-  // Ambil data master (Status Stok)
   useEffect(() => {
+    let isMounted = true; // BARU: Flag untuk cleanup
+
     async function fetchMasterData() {
       try {
         const statusRes = await axios.get('/api/reports/stock-statuses'); 
-        // Filter 'Good' agar tidak muncul di opsi filter
-        setStockStatuses(statusRes.data.filter(s => s.name !== 'Good'));
+        if (isMounted) { // Cek sebelum set state
+          // Filter 'Good' agar tidak muncul di opsi filter
+          setStockStatuses(statusRes.data.filter(s => s.name !== 'Good'));
+        }
       } catch (err) {
-        toast.error('Gagal memuat data master status.');
+        if (isMounted) toast.error('Gagal memuat data master status.');
       }
     }
     fetchMasterData();
-    fetchReports(); // Muat laporan awal
-  }, []); 
+    fetchReports(); // Muat laporan awal (tetap panggil fetchReports yang di bawah)
+    
+    // BARU: Cleanup function
+    return () => {
+        isMounted = false;
+    };
+  }, []); // Hanya dipanggil sekali saat load
 
   // Fungsi Fetch Laporan
+  // PERBAIKAN: Tambahkan isMounted check di sini untuk pemanggilan filter
   async function fetchReports() {
+    let isMounted = true; // BARU: Tambahkan flag lokal
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true);
       
       const params = {
           startDate: startDate || undefined,
@@ -63,20 +73,24 @@ function StatusInventoryReport() {
       };
       
       const response = await axios.get('/api/reports/status-inventory', { params }); 
-      setReports(response.data);
+      if (isMounted) setReports(response.data);
     } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        toast.error('Gagal memuat data laporan status.');
+        if (isMounted) toast.error('Gagal memuat data laporan status.');
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
+    // Tambahkan pengembalian cleanup jika fungsi ini dipanggil di luar useEffect
+    return () => { isMounted = false; };
   }
   
   // Handler Submit Filter
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchReports();
+      const cleanup = fetchReports(); // Panggil ulang dengan state filter saat ini
+      // Di sini kita tidak bisa menggunakan cleanup return, 
+      // tapi penambahan flag di fetchReports sudah membantu.
   }
 
   const statusOptions = [

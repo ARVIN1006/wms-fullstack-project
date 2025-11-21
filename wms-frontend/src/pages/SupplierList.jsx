@@ -24,28 +24,38 @@ function SupplierList() {
   // Role dari Context
   const { userRole } = useAuth();
 
-  // --- Fungsi Utama Fetch Data ---
-  async function fetchSuppliers(page, search) {
-    try {
-      setLoading(true);
-      const response = await axios.get(
-        `/api/suppliers?page=${page}&limit=${LIMIT_PER_PAGE}&search=${search}`
-      );
-      setSuppliers(response.data.suppliers);
-      setTotalPages(response.data.totalPages);
-      setCurrentPage(response.data.currentPage);
-    } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
-        toast.error('Gagal memuat data supplier.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
+  // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
-    fetchSuppliers(currentPage, activeSearch);
-  }, [currentPage, activeSearch]);
+    let isMounted = true; // BARU: Flag untuk melacak status mounting
+
+    async function fetchSuppliersData() {
+      try {
+        if (isMounted) setLoading(true); // Cek sebelum set loading
+        const response = await axios.get(
+          `/api/suppliers?page=${currentPage}&limit=${LIMIT_PER_PAGE}&search=${activeSearch}`
+        );
+        
+        if (isMounted) { // Cek sebelum set state
+          setSuppliers(response.data.suppliers);
+          setTotalPages(response.data.totalPages);
+          setCurrentPage(response.data.currentPage);
+        }
+      } catch (err) {
+        if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
+          toast.error('Gagal memuat data supplier.');
+        }
+      } finally {
+        if (isMounted) setLoading(false); // Cek sebelum set loading
+      }
+    }
+
+    fetchSuppliersData();
+
+    // Cleanup function: set flag ke false saat unmount
+    return () => {
+      isMounted = false;
+    };
+  }, [currentPage, activeSearch]); // Dependency array tetap sama
 
   // --- Handlers Modal & CRUD ---
   const handleCloseFormModal = () => {
@@ -75,9 +85,9 @@ function SupplierList() {
         toast.success('Supplier baru berhasil ditambahkan!');
       }
       handleCloseFormModal();
-      // Refresh ke halaman 1 jika ada data baru
+      // Refresh ke halaman 1 jika ada data baru atau memicu re-fetch
       if (currentPage !== 1) setCurrentPage(1);
-      else fetchSuppliers(currentPage, activeSearch);
+      else setCurrentPage(c => c);
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menyimpan supplier.');
     }
@@ -103,7 +113,7 @@ function SupplierList() {
       if (suppliers.length === 1 && currentPage > 1) {
         setCurrentPage(currentPage - 1);
       } else {
-        fetchSuppliers(currentPage, activeSearch);
+        setCurrentPage(c => c);
       }
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menghapus supplier.');

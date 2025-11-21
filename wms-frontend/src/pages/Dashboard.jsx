@@ -39,10 +39,10 @@ function Dashboard() {
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
 
-  // Ambil semua data dashboard
-  async function fetchDashboardData() {
+  // --- Perbaikan: Ambil semua data dashboard dengan flag isMounted ---
+  async function fetchDashboardData(isMounted) { // BARU: Terima flag isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true); // Cek sebelum set loading
       const [productRes, locationRes, stockRes, lowStockRes, activityRes] =
         await Promise.all([
           axios.get("/api/products?limit=1000"),
@@ -52,34 +52,42 @@ function Dashboard() {
           axios.get("/api/reports/recent-activity"),
         ]);
 
-      setStats({
-        productCount: productRes.data.products.length,
-        locationCount: locationRes.data.length,
-      });
-      setStocks(stockRes.data);
-      setLowStockItems(lowStockRes.data);
-      setRecentActivity(activityRes.data);
+      if (isMounted) { // Cek sebelum set state
+        setStats({
+          productCount: productRes.data.products.length,
+          locationCount: locationRes.data.length,
+        });
+        setStocks(stockRes.data);
+        setLowStockItems(lowStockRes.data);
+        setRecentActivity(activityRes.data);
+      }
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error("Gagal memuat data dashboard.");
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false); // Cek sebelum set loading
     }
   }
 
+  // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
-    fetchDashboardData();
+    let isMounted = true; // BARU: Flag untuk cleanup
+    fetchDashboardData(isMounted); // Kirim flag ke fungsi fetch
+    
+    return () => {
+      isMounted = false; // Cleanup function
+    };
   }, [userRole]);
 
-  // Realtime update menggunakan Socket.IO
+  // Realtime update menggunakan Socket.IO (KEEP AS IS - Cleanup socket sudah benar)
   useEffect(() => {
     const socket = io("http://localhost:5000");
 
     socket.on("new_activity", (data) => {
       console.log("Realtime event diterima:", data.message);
       toast.success(data.message, { icon: "⚡" });
-      fetchDashboardData(); // muat ulang data
+      fetchDashboardData(true); // muat ulang data (Asumsi aman karena toast dan re-fetch)
     });
 
     return () => {

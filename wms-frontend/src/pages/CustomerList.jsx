@@ -25,26 +25,34 @@ function CustomerList() {
   const isAdmin = userRole === 'admin';
 
   // --- Fungsi Utama Fetch Data ---
-  async function fetchCustomers(page, search) {
+  async function fetchCustomers(page, search, isMounted) { // BARU: Terima flag isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true);
       const response = await axios.get(
         `/api/customers?page=${page}&limit=${LIMIT_PER_PAGE}&search=${search}`
       );
-      setCustomers(response.data.customers);
-      setTotalPages(response.data.totalPages);
-      setCurrentPage(response.data.currentPage);
+      if (isMounted) { // Cek sebelum set state
+        setCustomers(response.data.customers);
+        setTotalPages(response.data.totalPages);
+        setCurrentPage(response.data.currentPage);
+      }
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error('Gagal memuat data pelanggan.');
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   }
 
+  // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
-    fetchCustomers(currentPage, activeSearch);
+    let isMounted = true; // BARU: Flag untuk cleanup
+    fetchCustomers(currentPage, activeSearch, isMounted); // Kirim flag ke fungsi fetch
+
+    return () => {
+      isMounted = false; // Cleanup function
+    };
   }, [currentPage, activeSearch]);
 
   // --- FUNGSI EKSPOR CSV ---
@@ -86,8 +94,9 @@ function CustomerList() {
             toast.success('Pelanggan baru berhasil ditambahkan!');
         }
         handleCloseFormModal();
+        // Trigger re-fetch
         if (currentPage !== 1) setCurrentPage(1); // Refresh ke halaman 1 jika nambah
-        else fetchCustomers(currentPage, activeSearch);
+        else setCurrentPage(c => c);
     } catch (err) {
         toast.error(err.response?.data?.msg || 'Gagal menyimpan pelanggan.');
     }
@@ -105,10 +114,11 @@ function CustomerList() {
     try {
         await axios.delete(`/api/customers/${customerToDelete.id}`);
         toast.success(`Pelanggan "${customerToDelete.name}" berhasil dihapus.`);
+        // Trigger re-fetch
         if (customers.length === 1 && currentPage > 1) {
             setCurrentPage(currentPage - 1);
         } else {
-            fetchCustomers(currentPage, activeSearch);
+            setCurrentPage(c => c);
         }
     } catch (err) {
         toast.error(err.response?.data?.msg || 'Gagal menghapus pelanggan.');

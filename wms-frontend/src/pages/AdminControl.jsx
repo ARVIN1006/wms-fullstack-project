@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import UserForm from "../components/UserForm";
@@ -32,6 +32,11 @@ function AdminControl() {
   const currentUsername = getUsernameFromToken(token); // BARU: Dapatkan username saat ini
   const [adminCount, setAdminCount] = useState(0); // State untuk menghitung Admin
 
+  // **********************************************
+  // PERBAIKAN 1: Gunakan useRef untuk melacak status mounting
+  // **********************************************
+  const isMountedRef = useRef(true); 
+
   // Redirect jika bukan admin (walaupun backend sudah jaga)
   useEffect(() => {
     if (userRole && userRole !== "admin") {
@@ -41,31 +46,48 @@ function AdminControl() {
   }, [userRole, navigate]); // Dipanggil saat role user berubah
 
   // Fetch semua users
+  // **********************************************
+  // PERBAIKAN 2: Cek isMountedRef.current sebelum set state
+  // **********************************************
   async function fetchUsers() {
     if (userRole !== "admin") return;
     try {
-      setLoading(true);
+      // Hanya set loading jika komponen masih terpasang
+      if (isMountedRef.current) setLoading(true);
+      
       // Panggil API users
       const response = await axios.get("/api/users");
       const allUsers = response.data;
 
-      // Hitung jumlah admin yang ada
-      const currentAdminCount = allUsers.filter(
-        (u) => u.role === "admin"
-      ).length;
-      setAdminCount(currentAdminCount);
+      if (isMountedRef.current) { // Cek sebelum set state
+        // Hitung jumlah admin yang ada
+        const currentAdminCount = allUsers.filter(
+          (u) => u.role === "admin"
+        ).length;
+        setAdminCount(currentAdminCount);
 
-      setUsers(allUsers);
+        setUsers(allUsers); // <-- Hanya dipanggil jika isMountedRef.current
+      }
     } catch (err) {
-      toast.error(err.response?.data?.msg || "Gagal memuat data users.");
+      if (isMountedRef.current) {
+        toast.error(err.response?.data?.msg || "Gagal memuat data users.");
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false); // <-- Hanya dipanggil jika isMountedRef.current
     }
   }
 
   // Efek untuk memuat data saat token/role berubah
   useEffect(() => {
+    isMountedRef.current = true; // Set ke true saat mount/dependencies berubah
     fetchUsers();
+    
+    // **********************************************
+    // PERBAIKAN 3: Cleanup Function
+    // **********************************************
+    return () => {
+      isMountedRef.current = false; // Set ke false saat unmount
+    };
   }, [token, userRole]);
 
   // Handlers CRUD
@@ -94,7 +116,7 @@ function AdminControl() {
         toast.success("User baru berhasil didaftarkan!");
       }
       handleCloseFormModal();
-      fetchUsers(); // Refresh data
+      fetchUsers(); // Panggil ulang untuk refresh data
     } catch (err) {
       toast.error(err.response?.data?.msg || "Gagal menyimpan user.");
     }
@@ -114,7 +136,7 @@ function AdminControl() {
     try {
       await axios.delete(`/api/users/${userToDelete.id}`);
       toast.success(`User "${userToDelete.username}" berhasil dihapus.`);
-      fetchUsers();
+      fetchUsers(); // Panggil ulang untuk refresh data
     } catch (err) {
       toast.error(err.response?.data?.msg || "Gagal menghapus user.");
     } finally {

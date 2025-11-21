@@ -13,25 +13,10 @@ function UserActivityReport() {
   const [endDate, setEndDate] = useState('');
   const [selectedOperator, setSelectedOperator] = useState(null);
 
-  // Ambil data Laporan dan data User
-  useEffect(() => {
-    // Fungsi untuk ambil data master user
-    async function fetchUsers() {
-      try {
-        const response = await axios.get('/api/users'); // Panggil API users
-        setUsers(response.data);
-      } catch (err) {
-        toast.error('Gagal memuat data operator.');
-      }
-    }
-    fetchUsers();
-    fetchReports(); // Muat laporan awal
-  }, []); // Hanya dipanggil sekali saat load
-
   // --- FUNGSI UTAMA FETCH REPORTS (DENGAN FILTER) ---
-  async function fetchReports() {
+  async function fetchReports(isMounted) { // BARU: Terima flag isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true); // Cek sebelum set loading
       
       const params = {
           startDate: startDate || undefined,
@@ -41,20 +26,44 @@ function UserActivityReport() {
       
       // Panggil API aktivitas baru dengan filter
       const response = await axios.get('/api/reports/activity', { params }); // API ini sudah kita upgrade di backend
-      setReports(response.data);
+      if (isMounted) setReports(response.data); // Cek sebelum set state
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error('Gagal memuat laporan aktivitas user.');
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false); // Cek sebelum set loading
     }
   }
+  
+  // Ambil data Laporan dan data User
+  // --- Perbaikan useEffect dengan Cleanup Function ---
+  useEffect(() => {
+    let isMounted = true; // BARU: Flag untuk cleanup
+
+    // Fungsi untuk ambil data master user
+    async function fetchUsers() {
+      try {
+        const response = await axios.get('/api/users'); // Panggil API users
+        if (isMounted) setUsers(response.data); // Cek sebelum set state
+      } catch (err) {
+        if (isMounted) toast.error('Gagal memuat data operator.');
+      }
+    }
+    
+    fetchUsers();
+    fetchReports(isMounted); // Muat laporan awal
+    
+    return () => {
+        isMounted = false; // Cleanup function
+    };
+  }, []); // Hanya dipanggil sekali saat load
+
   
   // Handler saat tombol 'Filter' diklik
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchReports(); // Panggil ulang dengan state filter saat ini
+      fetchReports(true); // Panggil ulang dengan state filter saat ini
   }
   
   // Opsi dropdown Operator

@@ -32,28 +32,6 @@ function ProductList() {
   const { userRole } = useAuth(); 
   const isAdmin = userRole === 'admin';
 
-  // --- Fungsi Utama Fetch Data ---
-  async function fetchProducts(page, search, sortF, sortO) { 
-    try {
-      setLoading(true);
-      const response = await axios.get(
-        `/api/products?page=${page}&limit=${LIMIT_PER_PAGE}&search=${search}&sortBy=${sortF}&sortOrder=${sortO}`
-      );
-      
-      setProducts(response.data.products);
-      setTotalPages(response.data.totalPages);
-      setCurrentPage(response.data.currentPage);
-
-    } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
-        toast.error('Gagal memuat data produk.');
-      }
-      // PENTING: Jika gagal, loading harus dimatikan agar halaman tidak freeze
-    } finally {
-      setLoading(false); 
-    }
-  }
-
   // --- Fungsi untuk Toggle Detail Stok ---
   const toggleStockDetail = async (productId) => {
       if (productStockDetails[productId]) {
@@ -71,9 +49,40 @@ function ProductList() {
   };
 
 
-  // --- useEffect: Dipanggil saat terjadi perubahan pada kontrol ---
+  // --- useEffect: Fetch Data dengan Cleanup Function ---
   useEffect(() => {
-    fetchProducts(currentPage, activeSearch, sortBy, sortOrder); 
+    let isMounted = true; // BARU: Flag untuk melacak status mounting
+
+    async function fetchProductsData() {
+      try {
+        if (isMounted) setLoading(true);
+        const response = await axios.get(
+          `/api/products?page=${currentPage}&limit=${LIMIT_PER_PAGE}&search=${activeSearch}&sortBy=${sortBy}&sortOrder=${sortOrder}`
+        );
+
+        if (isMounted) { // Cek isMounted sebelum set state
+          setProducts(response.data.products);
+          setTotalPages(response.data.totalPages);
+          setCurrentPage(response.data.currentPage);
+        }
+
+      } catch (err) {
+        if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
+          toast.error('Gagal memuat data produk.');
+        }
+      } finally {
+        if (isMounted) { // Cek isMounted sebelum set state
+          setLoading(false); 
+        }
+      }
+    }
+
+    fetchProductsData(); // Panggil fungsi internal
+
+    // Cleanup function: set flag ke false saat unmount
+    return () => {
+      isMounted = false;
+    };
   }, [currentPage, activeSearch, sortBy, sortOrder]); 
 
   // --- Handlers CRUD ---
@@ -91,8 +100,9 @@ function ProductList() {
             toast.success('Produk baru berhasil ditambahkan!');
         }
         handleCloseFormModal();
+        // Trigger re-fetch di useEffect
         if (currentPage !== 1) setCurrentPage(1);
-        else fetchProducts(currentPage, activeSearch, sortBy, sortOrder);
+        else setCurrentPage(c => c); 
     } catch (err) {
         toast.error(err.response?.data?.msg || 'Gagal menyimpan produk.');
     }
@@ -107,10 +117,11 @@ function ProductList() {
         await axios.delete(`/api/products/${productToDelete.id}`);
         toast.success(`Produk "${productToDelete.name}" berhasil dihapus.`);
         
+        // Trigger re-fetch di useEffect
         if (products.length === 1 && currentPage > 1) {
             setCurrentPage(currentPage - 1);
         } else {
-            fetchProducts(currentPage, activeSearch, sortBy, sortOrder);
+            setCurrentPage(c => c); // Memaksa re-render untuk refresh data di halaman yang sama
         }
     } catch (err) {
         toast.error(err.response?.data?.msg || 'Gagal menghapus produk.');

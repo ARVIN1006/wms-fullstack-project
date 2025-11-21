@@ -17,26 +17,32 @@ function LocationList() {
   const isAdmin = userRole === 'admin';
 
   // Fungsi Fetch Lokasi (dengan Total Stok)
-  async function fetchLocations() {
+  async function fetchLocations(isMounted) { // BARU: Terima flag isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true); // Cek sebelum set loading
       // API locations sekarang mengembalikan 'total_stock'
       const response = await axios.get(`/api/locations`); 
-      setLocations(response.data);
+      if (isMounted) setLocations(response.data); // Cek sebelum set state
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error('Gagal memuat data lokasi.');
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false); // Cek sebelum set loading
     }
   }
 
+  // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
-    fetchLocations();
+    let isMounted = true; // BARU: Flag untuk cleanup
+    fetchLocations(isMounted); // Kirim flag ke fungsi fetch
+
+    return () => {
+      isMounted = false; // Cleanup function
+    };
   }, []);
 
-  // --- Handlers Modal & CRUD (Disembunyikan untuk brevity) ---
+  // --- Handlers Modal & CRUD (Logic tetap sama, hanya memanggil fetchLocations) ---
   const handleCloseFormModal = () => {
     setIsFormModalOpen(false);
     setEditingLocation(null);
@@ -63,7 +69,7 @@ function LocationList() {
         toast.success('Lokasi baru berhasil ditambahkan!');
       }
       handleCloseFormModal();
-      fetchLocations();
+      fetchLocations(true); // Re-fetch
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menyimpan lokasi.');
     }
@@ -84,7 +90,7 @@ function LocationList() {
     try {
       await axios.delete(`/api/locations/${locationToDelete.id}`); 
       toast.success(`Lokasi "${locationToDelete.name}" berhasil dihapus.`);
-      fetchLocations(); 
+      fetchLocations(true); // Re-fetch
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menghapus lokasi.');
     } finally {
@@ -92,7 +98,7 @@ function LocationList() {
     }
   };
 
-const UtilizationBar = ({ percentage }) => {
+  const UtilizationBar = ({ percentage }) => {
       const perc = Math.min(Math.max(percentage, 0), 100); // Batasi 0-100
       let bgColor = 'bg-green-500';
       if (perc > 75) bgColor = 'bg-yellow-500';

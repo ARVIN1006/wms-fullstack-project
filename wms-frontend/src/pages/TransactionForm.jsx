@@ -47,28 +47,37 @@ function TransactionForm() {
     label: s.name,
   }));
 
+  // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
+    let isMounted = true; // BARU: Flag untuk cleanup
+    
     async function fetchMasterData() {
       try {
-        setLoadingMaster(true);
+        if (isMounted) setLoadingMaster(true); // Cek sebelum set loading
         const [locationRes, supplierRes, statusRes] = await Promise.all([
           axios.get("/api/locations"),
           axios.get("/api/suppliers?page=1&limit=1000&search="),
           axios.get("/api/reports/stock-statuses"),
         ]);
 
-        setLocations(locationRes.data);
-        setSuppliers(supplierRes.data.suppliers);
-        setStockStatuses(statusRes.data);
+        if (isMounted) { // Cek sebelum set state
+          setLocations(locationRes.data);
+          setSuppliers(supplierRes.data.suppliers);
+          setStockStatuses(statusRes.data);
+        }
       } catch (err) {
-        if (err.response?.status !== 401) {
+        if (isMounted && err.response?.status !== 401) {
           toast.error("Gagal memuat data master.");
         }
       } finally {
-        setLoadingMaster(false);
+        if (isMounted) setLoadingMaster(false); // Cek sebelum set loading
       }
     }
     fetchMasterData();
+
+    return () => {
+      isMounted = false; // Cleanup function
+    };
   }, []);
 
   useEffect(() => {
@@ -254,7 +263,8 @@ function TransactionForm() {
           volume_m3: 0,
         },
       ]);
-
+      
+      // Re-fetch locations to get updated capacity data
       const locationRes = await axios.get("/api/locations");
       setLocations(locationRes.data);
     } catch (err) {
