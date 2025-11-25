@@ -72,7 +72,8 @@ router.post('/login', async (req, res) => {
         const payload = {
           user: {
             id: user.id,
-            role: user.role
+            role: user.role,
+            username: user.username // Tambahkan username ke payload untuk Profile.jsx
           }
         };
         jwt.sign(
@@ -88,6 +89,52 @@ router.post('/login', async (req, res) => {
         console.error(err.message);
         res.status(500).send('Server Error saat login');
     }
+});
+
+
+// PUT /api/auth/password (Ubah Kata Sandi Sendiri)
+router.put('/password', auth, async (req, res) => {
+  try {
+    const { oldPassword, newPassword, newPasswordConfirm } = req.body;
+    const userId = req.user.id; // Diambil dari token
+
+    // 1. Validasi Input
+    if (!oldPassword || !newPassword || !newPasswordConfirm) {
+      return res.status(400).json({ msg: 'Semua field password wajib diisi.' });
+    }
+    if (newPassword !== newPasswordConfirm) {
+      return res.status(400).json({ msg: 'Password baru dan konfirmasi tidak cocok.' });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({ msg: 'Password baru minimal 6 karakter.' });
+    }
+
+    // 2. Ambil Hash Password Lama
+    const userResult = await db.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ msg: 'User tidak ditemukan.' });
+    }
+    const currentHash = userResult.rows[0].password_hash;
+
+    // 3. Verifikasi Password Lama
+    const isMatch = await bcrypt.compare(oldPassword, currentHash);
+    if (!isMatch) {
+      return res.status(400).json({ msg: 'Password lama salah.' });
+    }
+
+    // 4. Hash Password Baru
+    const salt = await bcrypt.genSalt(10);
+    const newPasswordHash = await bcrypt.hash(newPassword, salt);
+
+    // 5. Update Password
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newPasswordHash, userId]);
+
+    res.json({ msg: 'Kata sandi berhasil diubah.' });
+
+  } catch (err) {
+    console.error('PASSWORD CHANGE ERROR:', err.message);
+    res.status(500).send('Server Error saat mengubah kata sandi');
+  }
 });
 
 module.exports = router;
