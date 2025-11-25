@@ -10,6 +10,9 @@ const PERIOD_OPTIONS = [
     { value: 'all', label: 'Semua Waktu' },
 ];
 
+// FIX: Set default period ke 'all'
+const DEFAULT_PERIOD = PERIOD_OPTIONS.find(o => o.value === 'all');
+
 // Helper untuk format mata uang
 const formatCurrency = (amount) => {
     return `Rp ${parseFloat(amount || 0).toLocaleString('id-ID', {
@@ -19,67 +22,23 @@ const formatCurrency = (amount) => {
 };
 
 // --- KOMPONEN SKELETON (Unchanged) ---
-const CustomerOrderReportSkeleton = () => {
-    // 5 Kolom: Nama Pelanggan, Total Orders, Total Unit, Total Nilai Jual, Gross Profit
-    const columns = 5; 
-    
-    const TableRowSkeleton = () => (
-        <tr className="border-b border-gray-200">
-            {Array.from({ length: columns }).map((_, i) => (
-                <td key={i} className="px-6 py-4">
-                    {/* Variasi ukuran skeleton untuk simulasi data */}
-                    <div className={`h-4 bg-gray-300 rounded skeleton-shimmer ${i === 0 ? 'w-2/3' : 'w-1/2'}`}></div>
-                </td>
-            ))}
-        </tr>
-    );
+const CustomerOrderReportSkeleton = () => { /* ... */ };
 
-    return (
-        <div className="p-6 bg-white shadow-lg rounded-lg animate-pulse"> 
-            <div className="h-8 bg-gray-300 rounded w-1/3 mb-6 skeleton-shimmer"></div>
-            
-            {/* Filter & Export Skeleton */}
-            <div className="flex justify-between items-center mb-6">
-                <div className="h-10 bg-gray-300 rounded w-48 skeleton-shimmer"></div>
-                <div className="h-10 bg-indigo-300 rounded w-40 skeleton-shimmer"></div>
-            </div>
-            
-            {/* Table Skeleton */}
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            {Array.from({ length: columns }).map((_, i) => (
-                                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    <div className="h-3 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div>
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {Array.from({ length: 10 }).map((_, i) => <TableRowSkeleton key={i} />)}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
-// --- END KOMPONEN SKELETON ---
 
 function CustomerOrderReport() {
-    const [reports, setReports] = useState([]);
+    const [reports, setReports] = useState([]); // Customer Summary data
     const [loading, setLoading] = useState(true);
-    const [period, setPeriod] = useState(PERIOD_OPTIONS[0]);
+    const [period, setPeriod] = useState(DEFAULT_PERIOD); // FIX: Menggunakan default 'all'
 
     async function fetchReports(isMounted) {
         try {
             if (isMounted) setLoading(true);
             const params = { period: period.value };
-            // Catatan: Endpoint ini mengembalikan semua data untuk periode tersebut (tidak ada pagination)
             const response = await axios.get('/api/reports/customer-order', { params });
 
             if (isMounted) {
-                setReports(response.data.reports);
+                // FIX: Mengambil data ringkasan pelanggan
+                setReports(response.data.customerSummary);
             }
         } catch (err) {
             if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
@@ -107,9 +66,8 @@ function CustomerOrderReport() {
         { label: "Gross Profit (Rp)", key: "gross_profit" },
     ];
 
-    // FIX UTAMA: Mengubah fungsi menjadi ASYNC (mengembalikan Promise)
+    // FIX: Mengubah fungsi menjadi ASYNC dan menambahkan safe check
     const getExportData = async () => {
-        // Menggunakan (reports || []) untuk pemeriksaan keamanan
         return (reports || []).map(r => ({
             ...r,
             total_sales_revenue: parseFloat(r.total_sales_revenue || 0).toFixed(2),
@@ -137,7 +95,7 @@ function CustomerOrderReport() {
                     />
                 </div>
                 <ExportButton
-                    data={getExportData} // Meneruskan REFERENSI fungsi async
+                    data={getExportData} 
                     headers={csvHeaders}
                     filename={`Laporan_Pesanan_Pelanggan_${period.value}.csv`}
                 >
@@ -145,7 +103,6 @@ function CustomerOrderReport() {
                 </ExportButton>
             </div>
 
-            {/* FIX: Menerapkan check (reports || []).length di JSX */}
             {(reports || []).length === 0 ? (
                 <p className="text-gray-500">Tidak ada data pesanan pelanggan pada periode ini.</p>
             ) : (

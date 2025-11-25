@@ -7,8 +7,80 @@ import AsyncSelect from "react-select/async";
 
 const LIMIT_PER_PAGE = 20; 
 
-// --- KOMPONEN SKELETON (Tidak diubah) ---
-const MovementReportSkeleton = () => { /* ... */ };
+// --- KOMPONEN SKELETON (Restored) ---
+const MovementReportSkeleton = () => {
+    // 8 Kolom dalam tabel pergerakan
+    const columns = 8; 
+    
+    const FilterItemSkeleton = () => (
+        <div className="h-10 bg-gray-300 rounded skeleton-shimmer"></div>
+    );
+
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {Array.from({ length: columns }).map((_, i) => (
+                <td key={i} className="px-6 py-4">
+                    <div className="h-4 bg-gray-300 rounded skeleton-shimmer"></div>
+                </td>
+            ))}
+        </tr>
+    );
+
+    return (
+        <div className="p-6 bg-white shadow-lg rounded-lg animate-pulse"> 
+            <div className="h-8 bg-gray-300 rounded w-1/3 mb-6 skeleton-shimmer"></div>
+            
+            {/* Filter Form Skeleton */}
+            <div className="mb-6 p-4 border rounded-lg bg-gray-50 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <FilterItemSkeleton />
+                    <FilterItemSkeleton />
+                    <FilterItemSkeleton />
+                    <FilterItemSkeleton />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div className="md:col-span-3">
+                        <FilterItemSkeleton />
+                    </div>
+                    <div className="h-10 bg-blue-300 rounded skeleton-shimmer"></div>
+                </div>
+            </div>
+            
+            {/* Total Count & Export Button Skeleton */}
+            <div className="flex justify-between items-center mb-6">
+                <div className="h-4 bg-gray-300 rounded w-20 skeleton-shimmer"></div>
+                <div className="h-10 bg-indigo-300 rounded w-40 skeleton-shimmer"></div>
+            </div>
+            
+            {/* Table Skeleton */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        {/* Header Row Placeholder */}
+                        <tr>
+                            {Array.from({ length: columns }).map((_, i) => (
+                                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <div className="h-3 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {/* 10 Rows Placeholder */}
+                        {Array.from({ length: 10 }).map((_, i) => <TableRowSkeleton key={i} />)}
+                    </tbody>
+                </table>
+            </div>
+             {/* Pagination Skeleton */}
+            <div className="flex justify-between items-center mt-6">
+                <div className="h-8 bg-gray-300 rounded w-32 skeleton-shimmer"></div>
+                <div className="h-8 bg-gray-300 rounded w-20 skeleton-shimmer"></div>
+                <div className="h-8 bg-gray-300 rounded w-32 skeleton-shimmer"></div>
+            </div>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
 
 
 function MovementReport() {
@@ -40,7 +112,7 @@ function MovementReport() {
     { label: "Alasan", key: "reason" },
   ];
 
-  // --- FUNGSI EKSPOR ASYNC (FIX TypeError) ---
+  // FIX: Mengubah fungsi menjadi ASYNC untuk ExportButton
   const getExportData = async () => {
     try {
         const params = {
@@ -51,14 +123,13 @@ function MovementReport() {
             productId: selectedProduct?.value || undefined,
         };
 
-        // Panggil endpoint export-all yang baru
         const response = await axios.get('/api/reports/movements/export-all', { params });
         const allReports = response.data;
         
-        // Return data yang diformat
+        // Menggunakan safe check (allReports || [])
         return (allReports || []).map((item) => ({
             ...item,
-            date: new Date(item.date).toLocaleString("id-ID"),
+            date: item.date ? new Date(item.date).toLocaleString("id-ID") : '-',
         }));
     } catch (err) {
         toast.error('Gagal mengambil semua data pergerakan untuk ekspor.');
@@ -134,21 +205,22 @@ function MovementReport() {
     }
     
     fetchLocations();
+    // FIX: Re-fetch dipicu oleh perubahan filter
     fetchReports(isMounted, 1); 
     
     return () => {
         isMounted = false; 
     };
-  }, []);
+  }, [startDate, endDate, selectedFromLocation, selectedToLocation, selectedProduct]); 
 
   // Handler saat tombol 'Filter' diklik
   const handleFilterSubmit = (e) => {
     e.preventDefault();
     setCurrentPage(1); 
-    fetchReports(true, 1); 
+    // fetchReports akan dipanggil melalui useEffect karena state filter berubah
   };
 
-  // --- Handler Pagination ---
+  // --- Handlers Pagination (Dibutuhkan untuk fix ReferenceError) ---
   const handlePrevPage = () => {
     if (currentPage > 1) {
         const newPage = currentPage - 1;
@@ -163,6 +235,8 @@ function MovementReport() {
         fetchReports(true, newPage);
     }
   };
+  // --- END Handlers Pagination ---
+
 
   const locationOptions = [
     { value: "", label: "Semua Lokasi" }, 
@@ -264,7 +338,7 @@ function MovementReport() {
       <div className="flex justify-between items-center mb-6">
         <p className='text-sm font-medium text-gray-600'>Total Data: {totalCount}</p> 
         <ExportButton
-          data={getExportData} // Menggunakan fungsi async getExportData
+          data={getExportData} 
           headers={csvHeaders}
           filename={`Laporan_Perpindahan_${new Date()
             .toISOString()
@@ -274,7 +348,7 @@ function MovementReport() {
         </ExportButton>
       </div>
 
-      {reports.length === 0 && !loading ? (
+      {(reports || []).length === 0 && !loading ? (
         <p className="text-gray-500 mt-4">
           Tidak ada data pergerakan tercatat.
         </p>
@@ -298,7 +372,7 @@ function MovementReport() {
                   {reports.map((item, index) => (
                     <tr key={index}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {new Date(item.date).toLocaleString("id-ID")}
+                        {item.date ? new Date(item.date).toLocaleString("id-ID") : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         {item.operator_name}

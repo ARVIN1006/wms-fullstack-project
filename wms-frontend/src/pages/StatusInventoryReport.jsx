@@ -6,10 +6,10 @@ import Select from 'react-select';
 
 function StatusInventoryReport() {
   const [reports, setReports] = useState([]);
-  const [stockStatuses, setStockStatuses] = useState([]); // Daftar status untuk filter
+  const [stockStatuses, setStockStatuses] = useState([]); 
   const [loading, setLoading] = useState(true);
   
-  // FIX: TAMBAHKAN DEKLARASI STATE LOKASI YANG HILANG
+  // State Lokasi
   const [locations, setLocations] = useState([]); 
 
   // --- STATE FILTER ---
@@ -31,12 +31,12 @@ function StatusInventoryReport() {
     { label: "Operator", key: "operator_name" },
   ];
   
-  // FIX: Mengubah getExportData menjadi ASYNC untuk kompatibilitas ExportButton
+  // FIX: Mengubah getExportData menjadi ASYNC dan menggunakan safe check
   const getExportData = async () => {
       // Menggunakan (reports || []) untuk pemeriksaan keamanan
       return (reports || []).map(item => ({
           ...item,
-          transaction_date: new Date(item.transaction_date).toLocaleString('id-ID'),
+          transaction_date: item.transaction_date ? new Date(item.transaction_date).toLocaleString('id-ID') : '-',
           expiry_date: item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('id-ID') : '-',
           batch_number: item.batch_number || '-',
       }));
@@ -55,12 +55,13 @@ function StatusInventoryReport() {
       };
       
       const response = await axios.get('/api/reports/status-inventory', { params }); 
-      if (isMounted) setReports(response.data.reports); // Asumsi backend mengembalikan objek {reports: [...]}
+      // FIX UTAMA: Pastikan kita mengambil .reports dari response.data
+      if (isMounted) setReports(response.data.reports || []); 
     } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
         if (isMounted) toast.error('Gagal memuat data laporan status.');
       }
-      if (isMounted) setReports([]); // Pastikan reports menjadi array kosong jika gagal
+      if (isMounted) setReports([]); 
     } finally {
       if (isMounted) setLoading(false);
     }
@@ -88,7 +89,6 @@ function StatusInventoryReport() {
     }
     fetchMasterData();
     
-    // Cleanup function
     return () => {
         isMounted = false;
     };
@@ -104,7 +104,6 @@ function StatusInventoryReport() {
   
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      // Filter otomatis di-trigger oleh useEffect saat state filter berubah.
   }
 
   const statusOptions = [
@@ -115,7 +114,7 @@ function StatusInventoryReport() {
   const locationOptions = [
     { value: '', label: 'Semua Lokasi' },
     ...locations.map(l => ({ value: l.id, label: l.name }))
-]; // Akses locations yang sudah dideklarasikan
+];
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg">
@@ -167,7 +166,7 @@ function StatusInventoryReport() {
       {/* Tombol Ekspor */}
       <div className="flex justify-end items-center mb-6">
         <ExportButton 
-            data={getExportData} // FIX: Meneruskan REFERENSI fungsi ASYNC
+            data={getExportData} 
             headers={csvHeaders} 
             filename={`Laporan_Stok_Rusak_${new Date().toISOString().slice(0, 10)}.csv`}
         >
@@ -195,7 +194,7 @@ function StatusInventoryReport() {
             <tbody className="bg-white divide-y divide-gray-200">
               {(reports || []).map((item) => (
                 <tr key={item.item_id}> 
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(item.transaction_date).toLocaleString('id-ID')}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">{item.transaction_date ? new Date(item.transaction_date).toLocaleString('id-ID') : '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.product_name} ({item.sku})</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">

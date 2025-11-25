@@ -29,7 +29,6 @@ function validateDateRange(start, end, res) {
   }
   return true;
 }
-
 // Middleware: Hanya Admin yang boleh melihat semua laporan utama
 router.use(auth, authorize(["admin"]));
 
@@ -589,14 +588,25 @@ router.get("/activity", async (req, res) => {
 });
 
 // ====================================================
-// 6. LAPORAN CUSTOMER & ORDER (FIX BUG FILTER TANGGAL)
+// 6. LAPORAN CUSTOMER & ORDER (FIXED: PERHITUNGAN GROSS PROFIT)
 // ====================================================
 router.get("/customer-order", async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { period, startDate, endDate } = req.query;
 
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(endDate) : null;
+    let start, end;
+    
+    // Tentukan range berdasarkan periode atau input manual
+    if (period && period !== 'all') {
+        const days = parseInt(period.replace('last', ''));
+        end = new Date();
+        start = new Date();
+        start.setDate(start.getDate() - days);
+    } else {
+        start = startDate ? new Date(startDate) : null;
+        end = endDate ? new Date(endDate) : null;
+    }
+
     if (!validateDateRange(start, end, res)) return;
 
     let where = [];
@@ -615,30 +625,32 @@ router.get("/customer-order", async (req, res) => {
       params.push(end);
     }
 
-    const whereStr = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
-    const whereStrAnd =
-      where.length > 0 ? ` WHERE ${where.join(" AND ")} AND ` : ` WHERE `;
+    const whereStr = where.length > 0 ? ` AND ${where.join(" AND ")}` : "";
 
     const summaryQuery = `
       SELECT 
         c.id AS customer_id,
         c.name AS customer_name,
         COUNT(DISTINCT t.id) AS total_orders, 
-        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS total_revenue -- PERBAIKAN COALESCE
+        COALESCE(SUM(ti.quantity), 0) AS total_units_out, -- FIX: Tambahkan total units out
+        
+        -- FIX UTAMA: Perhitungan Revenue, COGS, dan Profit
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS total_sales_revenue,
+        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS total_cogs,
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) -
+        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS gross_profit
+
       FROM customers c
-      
-      -- PERBAIKAN: Ganti LEFT JOIN menjadi INNER JOIN
-      -- Ini memastikan hanya pelanggan DENGAN transaksi (sesuai filter) yang muncul
       INNER JOIN transactions t ON c.id = t.customer_id AND t.type = 'OUT'
-      
       LEFT JOIN transaction_items ti ON t.id = ti.transaction_id
       LEFT JOIN products p ON ti.product_id = p.id
-      ${whereStr}
+      WHERE t.type = 'OUT' ${whereStr}
       GROUP BY c.id, c.name
-      ORDER BY total_orders DESC;
+      ORDER BY gross_profit DESC;
     `;
     const summary = await db.query(summaryQuery, params);
 
+    // Query Top Product (Menggunakan whereStr)
     const topProductQuery = `
       SELECT
         p.sku,
@@ -647,7 +659,7 @@ router.get("/customer-order", async (req, res) => {
       FROM transactions t
       JOIN transaction_items ti ON t.id = ti.transaction_id
       JOIN products p ON ti.product_id = p.id
-      ${whereStrAnd} t.type = 'OUT'
+      WHERE t.type = 'OUT' ${whereStr}
       GROUP BY p.sku, p.name
       ORDER BY total_units_sold DESC
       LIMIT 5;
@@ -762,11 +774,11 @@ router.get("/financial", async (req, res) => {
 });
 
 // ====================================================
-// 8. STATUS INVENTORY
+// 8. STATUS INVENTORY (FIXED)
 // ====================================================
 router.get("/status-inventory", async (req, res) => {
   try {
-    const { startDate, endDate, statusId } = req.query;
+    const { startDate, endDate, statusId, locationId } = req.query; // FIX: Tambah locationId
 
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
@@ -812,12 +824,17 @@ router.get("/status-inventory", async (req, res) => {
       where.push(`ti.stock_status_id = $${i}`);
       params.push(statusId);
     }
+    if (locationId) { // FIX: Tambahkan filter lokasi
+      i++;
+      where.push(`l.id = $${i}`);
+      params.push(locationId);
+    }
 
     query += ` WHERE ${where.join(" AND ")}`;
     query += ` ORDER BY t.date DESC;`;
 
     const result = await db.query(query, params);
-    res.json(result.rows);
+    res.json({ reports: result.rows });
   } catch (err) {
     console.error("ERROR IN /status-inventory:", err.message);
     res
@@ -825,5 +842,6 @@ router.get("/status-inventory", async (req, res) => {
       .send("Server Error saat mengambil laporan status inventaris.");
   }
 });
+
 
 module.exports = router;
