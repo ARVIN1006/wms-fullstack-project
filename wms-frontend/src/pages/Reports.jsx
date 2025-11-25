@@ -4,6 +4,8 @@ import { toast } from 'react-hot-toast';
 import ExportButton from '../components/ExportButton';
 import Select from 'react-select'; 
 
+const LIMIT_PER_PAGE = 20; // Konstanta untuk limit halaman
+
 // Opsi Tipe Transaksi
 const typeOptions = [
     { value: '', label: 'Semua Transaksi' },
@@ -24,6 +26,11 @@ function Reports() {
   const [suppliers, setSuppliers] = useState([]); 
   const [customers, setCustomers] = useState([]); 
   const [loading, setLoading] = useState(true);
+
+  // --- STATE PAGINATION BARU ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   // --- STATE FILTER ---
   const [type, setType] = useState(typeOptions[0]);
@@ -60,26 +67,40 @@ function Reports() {
       }));
   }
 
-  // --- FUNGSI UTAMA FETCH REPORTS (DENGAN FILTER) ---
-  async function fetchReports(isMounted) { 
+  // --- FUNGSI UTAMA FETCH REPORTS (DENGAN FILTER & PAGINATION) ---
+  async function fetchReports(isMounted, page = 1) { 
     try {
       if (isMounted) setLoading(true); 
       
       const params = {
-          limit: undefined, 
+          limit: LIMIT_PER_PAGE, // Gunakan limit
+          page: page,            // Gunakan page
           type: type.value || undefined,
-          supplierId: type.value === 'IN' ? supplier?.value : undefined,
-          customerId: type.value === 'OUT' ? customer?.value : undefined,
+          // LOGIKA KONDISIONAL UNTUK FILTER IN/OUT
+          supplierId: type.value === 'IN' ? supplier?.value : undefined, 
+          customerId: type.value === 'OUT' ? customer?.value : undefined, 
           startDate: startDate || undefined,
           endDate: endDate || undefined
       };
 
       const response = await axios.get('/api/reports/history', { params }); 
-      // PERBAIKAN UTAMA: Ambil HANYA array reports dari objek data
-      if (isMounted) setReports(response.data.reports); 
+      
+      if (isMounted) {
+          // Set data laporan
+          setReports(response.data.reports); 
+          // Set metadata pagination
+          setTotalPages(response.data.totalPages);
+          setTotalCount(response.data.totalCount);
+          setCurrentPage(response.data.currentPage);
+      }
     } catch (err) {
       if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
           toast.error('Gagal memuat data laporan transaksi.');
+      }
+      if (isMounted) {
+          setReports([]);
+          setTotalPages(0);
+          setTotalCount(0);
       }
     } finally {
       if (isMounted) setLoading(false); 
@@ -88,7 +109,7 @@ function Reports() {
 
   // --- Ambil Data Master & Laporan saat Awal ---
   useEffect(() => {
-    let isMounted = true; // Flag untuk cleanup
+    let isMounted = true; 
 
     async function fetchMasterAndReports() {
         if (isMounted) setLoading(true);
@@ -99,13 +120,13 @@ function Reports() {
                 axios.get('/api/customers?page=1&limit=1000')
             ]);
             
-            if (isMounted) { // Cek sebelum set state
+            if (isMounted) { 
               setSuppliers(supplierRes.data.suppliers);
               setCustomers(customerRes.data.customers);
             }
             
-            // Muat Laporan Awal
-            fetchReports(isMounted); // Kirim flag ke fungsi fetchReports
+            // Muat Laporan Awal (Halaman 1)
+            fetchReports(isMounted, 1); 
 
         } catch (err) {
             if (isMounted) {
@@ -116,15 +137,32 @@ function Reports() {
     fetchMasterAndReports();
     
     return () => {
-        isMounted = false; // Cleanup function
+        isMounted = false; 
     };
   }, []);
 
   // Handler saat tombol 'Tampilkan Laporan' diklik
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchReports(true); // Panggil ulang dengan state filter saat ini
+      setCurrentPage(1); // Reset ke halaman 1 saat filter baru
+      fetchReports(true, 1); 
   }
+  
+  // --- Handler Pagination ---
+  const handlePrevPage = () => {
+      if (currentPage > 1) {
+          const newPage = currentPage - 1;
+          setCurrentPage(newPage);
+          fetchReports(true, newPage);
+      }
+  };
+  const handleNextPage = () => {
+      if (currentPage < totalPages) {
+          const newPage = currentPage + 1;
+          setCurrentPage(newPage);
+          fetchReports(true, newPage);
+      }
+  };
   
   // Opsi Dropdown Supplier/Customer yang dinamis
   const partyOptions = (type.value === 'IN' ? suppliers : customers).map(p => ({
@@ -138,7 +176,7 @@ function Reports() {
     <div className="p-6 bg-white shadow-lg rounded-lg">
       <h1 className="text-2xl font-bold text-gray-800 mb-4">📊 Laporan Riwayat Transaksi Lengkap</h1>
       
-      {/* --- FORM FILTER BARU --- */}
+      {/* --- FORM FILTER --- */}
       <form onSubmit={handleFilterSubmit} className="mb-6 p-4 border rounded-lg bg-gray-50">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
             
@@ -194,8 +232,9 @@ function Reports() {
         </div>
       </form>
       
-      {/* Tombol Ekspor */}
-      <div className="flex justify-end items-center mb-6">
+      {/* Tombol Ekspor & Total Data */}
+      <div className="flex justify-between items-center mb-6"> 
+        <p className='text-sm font-medium text-gray-600'>Total Data: {totalCount}</p> 
         <ExportButton 
             data={getExportData()} 
             headers={csvHeaders} 
@@ -208,52 +247,69 @@ function Reports() {
       {loading ? (
         <p className="text-gray-500">Memuat data...</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipe</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nilai Transaksi</th> 
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Operator</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier/Cust</th> 
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Produk (SKU)</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jmlh</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lokasi</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Waktu Proses (Menit)</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {(reports || []).map((item) => (
-                <tr key={item.item_id}> 
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{new Date(item.transaction_date).toLocaleString('id-ID')}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.transaction_type === 'IN' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                      {item.transaction_type === 'IN' ? 'MASUK' : 'KELUAR'}
+        <> 
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipe</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nilai Transaksi</th> 
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Operator</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier/Cust</th> 
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Produk (SKU)</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jmlh</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lokasi</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Waktu Proses (Menit)</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {(reports || []).map((item) => (
+                    <tr key={item.item_id}> 
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{new Date(item.transaction_date).toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.transaction_type === 'IN' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          {item.transaction_type === 'IN' ? 'MASUK' : 'KELUAR'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                        Rp {parseFloat(item.transaction_value || 0).toLocaleString('id-ID')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{item.operator_name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {item.supplier_name || item.customer_name || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {item.product_name} ({item.sku})
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">{item.quantity}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{item.location_name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{item.stock_status_name || 'Good'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {item.process_start ? `${calculateDuration(item.process_start, item.process_end)} Menit` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* PAGINATION CONTROLS */}
+            <div className="flex justify-between items-center mt-6">
+                <p className='text-sm text-gray-600'>Menampilkan {reports.length} dari {totalCount} data.</p>
+                <div className='space-x-4'>
+                    <button onClick={handlePrevPage} disabled={currentPage <= 1 || loading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+                        &laquo; Sebelumnya
+                    </button>
+                    <span className="text-sm">
+                        Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong>
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                    Rp {parseFloat(item.transaction_value || 0).toLocaleString('id-ID')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{item.operator_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {item.supplier_name || item.customer_name || '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {item.product_name} ({item.sku})
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">{item.quantity}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{item.location_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{item.stock_status_name || 'Good'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {item.process_start ? `${calculateDuration(item.process_start, item.process_end)} Menit` : '-'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <button onClick={handleNextPage} disabled={currentPage >= totalPages || loading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+                        Berikutnya &raquo;
+                    </button>
+                </div>
+            </div>
+        </>
       )}
       {reports.length === 0 && !loading && (
           <p className='text-gray-500 mt-4'>Tidak ada data transaksi tercatat dengan filter ini.</p>

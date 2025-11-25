@@ -5,10 +5,17 @@ import ExportButton from "../components/ExportButton";
 import Select from "react-select";
 import AsyncSelect from "react-select/async";
 
+const LIMIT_PER_PAGE = 20; // Tetapkan limit halaman
+
 function MovementReport() {
   const [reports, setReports] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // --- STATE PAGINATION BARU ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   // --- STATE FILTER ---
   const [startDate, setStartDate] = useState("");
@@ -17,7 +24,7 @@ function MovementReport() {
   const [selectedToLocation, setSelectedToLocation] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
-  // Definisi Header untuk file CSV
+  // Definisi Header untuk file CSV (unchanged)
   const csvHeaders = [
     { label: "Tanggal", key: "date" },
     { label: "Operator", key: "operator_name" },
@@ -29,7 +36,7 @@ function MovementReport() {
     { label: "Alasan", key: "reason" },
   ];
 
-  // Fungsi untuk memformat data sebelum diekspor
+  // Fungsi untuk memformat data sebelum diekspor (unchanged)
   const getExportData = () => {
     return reports.map((item) => ({
       ...item,
@@ -37,7 +44,7 @@ function MovementReport() {
     }));
   };
 
-  // Fungsi Pencarian Produk Asynchronous (untuk filter)
+  // Fungsi Pencarian Produk Asynchronous (untuk filter) (unchanged)
   const loadProductOptions = async (inputValue) => {
     try {
       const response = await axios.get(
@@ -53,13 +60,15 @@ function MovementReport() {
     }
   };
 
-  // --- FUNGSI FETCH REPORTS (DI-UPGRADE) ---
-  async function fetchReports(isMounted) { // BARU: Terima flag isMounted
+  // --- FUNGSI FETCH REPORTS (DENGAN PAGINATION) ---
+  async function fetchReports(isMounted, page = 1) { 
     try {
-      if (isMounted) setLoading(true); // Cek sebelum set loading
+      if (isMounted) setLoading(true); 
 
       // Persiapan filter query
       const params = {
+        limit: LIMIT_PER_PAGE, // Tambah limit
+        page: page,             // Tambah page
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         fromLocationId: selectedFromLocation?.value || undefined,
@@ -67,46 +76,77 @@ function MovementReport() {
         productId: selectedProduct?.value || undefined,
       };
 
+      // Memanggil rute yang sudah diubah untuk mendukung pagination
       const response = await axios.get("/api/reports/movements", { params });
-      if (isMounted) setReports(response.data); // Cek sebelum set state
+      
+      if (isMounted) { 
+        // Set data laporan
+        setReports(response.data.reports); 
+        // Set metadata pagination
+        setTotalPages(response.data.totalPages);
+        setTotalCount(response.data.totalCount);
+        setCurrentPage(response.data.currentPage);
+      }
     } catch (err) {
       if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error("Gagal memuat data laporan pergerakan.");
       }
+      if (isMounted) {
+        setReports([]);
+        setTotalPages(0);
+        setTotalCount(0);
+      }
     } finally {
-      if (isMounted) setLoading(false); // Cek sebelum set loading
+      if (isMounted) setLoading(false); 
     }
   }
   
   // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
-    let isMounted = true; // BARU: Flag untuk cleanup
+    let isMounted = true; 
 
     async function fetchLocations() {
       try {
         const response = await axios.get("/api/locations");
-        if (isMounted) setLocations(response.data); // Cek sebelum set state
+        if (isMounted) setLocations(response.data); 
       } catch (err) {
         if (isMounted) toast.error("Gagal memuat data lokasi master.");
       }
     }
     
     fetchLocations();
-    fetchReports(isMounted); // Muat laporan awal
+    fetchReports(isMounted, 1); // Muat laporan awal (Halaman 1)
     
     return () => {
-        isMounted = false; // Cleanup function
+        isMounted = false; 
     };
   }, []);
 
   // Handler saat tombol 'Filter' diklik
   const handleFilterSubmit = (e) => {
     e.preventDefault();
-    fetchReports(true); // Muat ulang data dengan filter baru
+    setCurrentPage(1); // Reset ke halaman 1 saat filter baru
+    fetchReports(true, 1); 
+  };
+
+  // --- Handler Pagination Baru ---
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+        const newPage = currentPage - 1;
+        setCurrentPage(newPage);
+        fetchReports(true, newPage);
+    }
+  };
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+        const newPage = currentPage + 1;
+        setCurrentPage(newPage);
+        fetchReports(true, newPage);
+    }
   };
 
   const locationOptions = [
-    { value: "", label: "Semua Lokasi" }, // Opsi default
+    { value: "", label: "Semua Lokasi" }, 
     ...locations.map((l) => ({ value: l.id, label: l.name })),
   ];
 
@@ -116,7 +156,7 @@ function MovementReport() {
         📊 Laporan Perpindahan Barang
       </h1>
 
-      {/* --- FORM FILTER BARU --- */}
+      {/* --- FORM FILTER --- */}
       <form
         onSubmit={handleFilterSubmit}
         className="mb-6 p-4 border rounded-lg bg-gray-50"
@@ -197,7 +237,9 @@ function MovementReport() {
         </div>
       </form>
 
-      <div className="flex justify-end items-center mb-6">
+      {/* Tombol Ekspor & Total Data */}
+      <div className="flex justify-between items-center mb-6">
+        <p className='text-sm font-medium text-gray-600'>Total Data: {totalCount}</p> 
         <ExportButton
           data={getExportData()}
           headers={csvHeaders}
@@ -212,52 +254,69 @@ function MovementReport() {
       {loading ? (
         <p className="text-gray-500">Memuat data...</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {csvHeaders.map((h) => (
-                  <th
-                    key={h.key}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
-                  >
-                    {h.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {reports.map((item, index) => (
-                <tr key={index}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    {new Date(item.date).toLocaleString("id-ID")}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    {item.operator_name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {item.sku}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {item.product_name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">
-                    {item.quantity}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-semibold">
-                    {item.from_location_name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
-                    {item.to_location_name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {item.reason}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                      {csvHeaders.map((h) => (
+                          <th
+                              key={h.key}
+                              className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                          >
+                              {h.label}
+                          </th>
+                      ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {reports.map((item, index) => (
+                    <tr key={index}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {new Date(item.date).toLocaleString("id-ID")}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        {item.operator_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {item.sku}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {item.product_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">
+                        {item.quantity}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-semibold">
+                        {item.from_location_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
+                        {item.to_location_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {item.reason}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* PAGINATION CONTROLS */}
+            <div className="flex justify-between items-center mt-6">
+                <p className='text-sm text-gray-600'>Menampilkan {reports.length} dari {totalCount} data.</p>
+                <div className='space-x-4'>
+                    <button onClick={handlePrevPage} disabled={currentPage <= 1 || loading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+                        &laquo; Sebelumnya
+                    </button>
+                    <span className="text-sm">
+                        Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong>
+                    </span>
+                    <button onClick={handleNextPage} disabled={currentPage >= totalPages || loading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+                        Berikutnya &raquo;
+                    </button>
+                </div>
+            </div>
+        </>
       )}
 
       {reports.length === 0 && !loading && (

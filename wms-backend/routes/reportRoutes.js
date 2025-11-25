@@ -228,18 +228,73 @@ router.get("/history", async (req, res) => {
 });
 
 // ====================================================
-// 3. LAPORAN PERPINDAHAN BARANG (MOVEMENT)
+// 3. LAPORAN PERPINDAHAN BARANG (MOVEMENT) - DITAMBAH PAGINATION
 // ====================================================
 router.get("/movements", async (req, res) => {
   try {
-    const { startDate, endDate, fromLocationId, toLocationId, productId } =
-      req.query;
+    const { 
+      limit = 20, // Default limit
+      page = 1, // Default page
+      startDate, 
+      endDate, 
+      fromLocationId, 
+      toLocationId, 
+      productId 
+    } = req.query;
 
+    const parsedLimit = parseInt(limit, 10);
+    const parsedPage = parseInt(page, 10);
+    const offset = (parsedPage - 1) * parsedLimit;
+    
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
     if (!validateDateRange(start, end, res)) return;
 
-    let query = `
+    let queryParams = [];
+    let whereClauses = [];
+    let i = 0;
+
+    if (start) {
+      i++;
+      whereClauses.push(`m.date >= $${i}`);
+      queryParams.push(start);
+    }
+    if (end) {
+      i++;
+      end.setDate(end.getDate() + 1);
+      whereClauses.push(`m.date < $${i}`);
+      queryParams.push(end);
+    }
+    if (fromLocationId) {
+      i++;
+      whereClauses.push(`m.from_location_id = $${i}`);
+      queryParams.push(fromLocationId);
+    }
+    if (toLocationId) {
+      i++;
+      whereClauses.push(`m.to_location_id = $${i}`);
+      queryParams.push(toLocationId);
+    }
+    if (productId) {
+      i++;
+      whereClauses.push(`m.product_id = $${i}`);
+      queryParams.push(productId);
+    }
+
+    const whereString =
+      whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
+      
+    // 1. Query COUNT
+    const countQuery = `
+      SELECT COUNT(m.id) FROM movements m ${whereString};
+    `;
+    const countResult = await db.query(countQuery, queryParams);
+    const totalCount = parseInt(countResult.rows[0].count, 10);
+    const totalPages = Math.ceil(totalCount / parsedLimit);
+
+
+    // 2. Query DATA
+    const dataQuery = `
       SELECT 
         m.date, p.sku, p.name AS product_name, m.quantity, m.reason,
         uf.name AS from_location_name, ut.name AS to_location_name, u.username AS operator_name
@@ -248,45 +303,25 @@ router.get("/movements", async (req, res) => {
       JOIN users u ON m.operator_id = u.id
       JOIN locations uf ON m.from_location_id = uf.id 
       JOIN locations ut ON m.to_location_id = ut.id
+      ${whereString} 
+      ORDER BY m.date DESC
+      LIMIT $${queryParams.length + 1}
+      OFFSET $${queryParams.length + 2}
     `;
-
-    let whereClauses = [];
-    let params = [];
-    let i = 0;
-
-    if (start) {
-      i++;
-      whereClauses.push(`m.date >= $${i}`);
-      params.push(start);
-    }
-    if (end) {
-      i++;
-      end.setDate(end.getDate() + 1);
-      whereClauses.push(`m.date < $${i}`);
-      params.push(end);
-    }
-    if (fromLocationId) {
-      i++;
-      whereClauses.push(`m.from_location_id = $${i}`);
-      params.push(fromLocationId);
-    }
-    if (toLocationId) {
-      i++;
-      whereClauses.push(`m.to_location_id = $${i}`);
-      params.push(toLocationId);
-    }
-    if (productId) {
-      i++;
-      whereClauses.push(`m.product_id = $${i}`);
-      params.push(productId);
-    }
-
-    if (whereClauses.length > 0)
-      query += ` WHERE ${whereClauses.join(" AND ")}`;
-    query += ` ORDER BY m.date DESC;`;
-
-    const result = await db.query(query, params);
-    res.json(result.rows);
+    
+    // Tambahkan limit dan offset ke parameter
+    queryParams.push(parsedLimit);
+    queryParams.push(offset);
+    
+    const dataResult = await db.query(dataQuery, queryParams);
+    
+    // Mengembalikan data dan metadata pagination
+    res.json({
+      reports: dataResult.rows,
+      totalPages,
+      currentPage: parsedPage,
+      totalCount,
+    });
   } catch (err) {
     console.error("ERROR IN /movements:", err.message);
     res.status(500).send("Server Error saat mengambil laporan pergerakan.");
