@@ -5,14 +5,18 @@ import ExportButton from "../components/ExportButton";
 import Select from "react-select";
 import AsyncSelect from "react-select/async";
 
-const LIMIT_PER_PAGE = 20; // Tetapkan limit halaman
+const LIMIT_PER_PAGE = 20; 
+
+// --- KOMPONEN SKELETON (Tidak diubah) ---
+const MovementReportSkeleton = () => { /* ... */ };
+
 
 function MovementReport() {
   const [reports, setReports] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // --- STATE PAGINATION BARU ---
+  // --- STATE PAGINATION ---
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -36,12 +40,30 @@ function MovementReport() {
     { label: "Alasan", key: "reason" },
   ];
 
-  // Fungsi untuk memformat data sebelum diekspor (unchanged)
-  const getExportData = () => {
-    return reports.map((item) => ({
-      ...item,
-      date: new Date(item.date).toLocaleString("id-ID"),
-    }));
+  // --- FUNGSI EKSPOR ASYNC (FIX TypeError) ---
+  const getExportData = async () => {
+    try {
+        const params = {
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
+            fromLocationId: selectedFromLocation?.value || undefined,
+            toLocationId: selectedToLocation?.value || undefined,
+            productId: selectedProduct?.value || undefined,
+        };
+
+        // Panggil endpoint export-all yang baru
+        const response = await axios.get('/api/reports/movements/export-all', { params });
+        const allReports = response.data;
+        
+        // Return data yang diformat
+        return (allReports || []).map((item) => ({
+            ...item,
+            date: new Date(item.date).toLocaleString("id-ID"),
+        }));
+    } catch (err) {
+        toast.error('Gagal mengambil semua data pergerakan untuk ekspor.');
+        return [];
+    }
   };
 
   // Fungsi Pencarian Produk Asynchronous (untuk filter) (unchanged)
@@ -67,8 +89,8 @@ function MovementReport() {
 
       // Persiapan filter query
       const params = {
-        limit: LIMIT_PER_PAGE, // Tambah limit
-        page: page,             // Tambah page
+        limit: LIMIT_PER_PAGE, 
+        page: page,             
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         fromLocationId: selectedFromLocation?.value || undefined,
@@ -76,13 +98,10 @@ function MovementReport() {
         productId: selectedProduct?.value || undefined,
       };
 
-      // Memanggil rute yang sudah diubah untuk mendukung pagination
       const response = await axios.get("/api/reports/movements", { params });
       
       if (isMounted) { 
-        // Set data laporan
         setReports(response.data.reports); 
-        // Set metadata pagination
         setTotalPages(response.data.totalPages);
         setTotalCount(response.data.totalCount);
         setCurrentPage(response.data.currentPage);
@@ -115,7 +134,7 @@ function MovementReport() {
     }
     
     fetchLocations();
-    fetchReports(isMounted, 1); // Muat laporan awal (Halaman 1)
+    fetchReports(isMounted, 1); 
     
     return () => {
         isMounted = false; 
@@ -125,11 +144,11 @@ function MovementReport() {
   // Handler saat tombol 'Filter' diklik
   const handleFilterSubmit = (e) => {
     e.preventDefault();
-    setCurrentPage(1); // Reset ke halaman 1 saat filter baru
+    setCurrentPage(1); 
     fetchReports(true, 1); 
   };
 
-  // --- Handler Pagination Baru ---
+  // --- Handler Pagination ---
   const handlePrevPage = () => {
     if (currentPage > 1) {
         const newPage = currentPage - 1;
@@ -149,6 +168,10 @@ function MovementReport() {
     { value: "", label: "Semua Lokasi" }, 
     ...locations.map((l) => ({ value: l.id, label: l.name })),
   ];
+
+  if (loading) {
+    return <MovementReportSkeleton />;
+  }
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg">
@@ -241,7 +264,7 @@ function MovementReport() {
       <div className="flex justify-between items-center mb-6">
         <p className='text-sm font-medium text-gray-600'>Total Data: {totalCount}</p> 
         <ExportButton
-          data={getExportData()}
+          data={getExportData} // Menggunakan fungsi async getExportData
           headers={csvHeaders}
           filename={`Laporan_Perpindahan_${new Date()
             .toISOString()
@@ -251,22 +274,24 @@ function MovementReport() {
         </ExportButton>
       </div>
 
-      {loading ? (
-        <p className="text-gray-500">Memuat data...</p>
+      {reports.length === 0 && !loading ? (
+        <p className="text-gray-500 mt-4">
+          Tidak ada data pergerakan tercatat.
+        </p>
       ) : (
         <>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                      {csvHeaders.map((h) => (
-                          <th
-                              key={h.key}
-                              className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
-                          >
-                              {h.label}
-                          </th>
-                      ))}
+                    {csvHeaders.map((h) => (
+                      <th
+                        key={h.key}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+                      >
+                        {h.label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -317,12 +342,6 @@ function MovementReport() {
                 </div>
             </div>
         </>
-      )}
-
-      {reports.length === 0 && !loading && (
-        <p className="text-gray-500 mt-4">
-          Tidak ada data pergerakan tercatat.
-        </p>
       )}
     </div>
   );

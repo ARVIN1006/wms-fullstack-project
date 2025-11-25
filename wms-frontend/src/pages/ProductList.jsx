@@ -4,13 +4,67 @@ import { toast } from 'react-hot-toast';
 import ProductForm from '../components/ProductForm';
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext'; 
-import Select from 'react-select'; // Import Select untuk filter
+import Select from 'react-select'; 
 
 const LIMIT_PER_PAGE = 10;
 
+// --- KOMPONEN SKELETON BARU ---
+const ProductListSkeleton = ({ isAdmin }) => {
+    // Skeleton untuk baris tabel
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {/* 10 Kolom untuk admin, 8 untuk staff (tanpa harga beli & nilai stok) */}
+            {Array.from({ length: isAdmin ? 10 : 8 }).map((_, i) => (
+                <td key={i} className="px-6 py-4">
+                    <div className="h-4 bg-gray-300 rounded skeleton-shimmer"></div>
+                </td>
+            ))}
+        </tr>
+    );
+
+    return (
+        <div className="p-6 bg-white shadow-lg rounded-lg relative animate-pulse"> 
+            
+            {/* Header/Filter Skeleton */}
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <div className="h-8 bg-gray-300 rounded w-1/3"></div>
+                <div className="flex gap-2 w-full md:w-auto">
+                    <div className="h-10 bg-gray-300 rounded w-full md:w-64"></div>
+                    <div className="h-10 bg-gray-300 rounded w-20"></div>
+                </div>
+                 <div className="h-10 bg-blue-300 rounded w-full md:w-40"></div>
+            </div>
+
+            {/* Category Filter Skeleton */}
+            <div className='mb-6 max-w-sm'>
+                <div className="h-10 bg-gray-200 rounded skeleton-shimmer"></div>
+            </div>
+
+            {/* Table Skeleton */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <TableRowSkeleton />
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {Array.from({ length: 10 }).map((_, i) => <TableRowSkeleton key={i} />)}
+                    </tbody>
+                </table>
+            </div>
+             {/* Pagination Skeleton */}
+            <div className="flex justify-between items-center mt-6">
+                <div className="h-8 bg-gray-300 rounded w-32"></div>
+                <div className="h-8 bg-gray-300 rounded w-20"></div>
+                <div className="h-8 bg-gray-300 rounded w-32"></div>
+            </div>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
+
 function ProductList() {
   const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]); // BARU: State Kategori
+  const [categories, setCategories] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -22,7 +76,7 @@ function ProductList() {
   const [totalPages, setTotalPages] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState(null); // BARU: State filter kategori
+  const [selectedCategory, setSelectedCategory] = useState(null); 
 
   // Sorting
   const [sortBy, setSortBy] = useState('created_at');
@@ -41,7 +95,7 @@ function ProductList() {
     ...categories.map(c => ({ value: c.id, label: c.name }))
   ];
 
-  // --- Fungsi untuk Toggle Detail Stok --- (Tidak Berubah)
+  // --- Fungsi untuk Toggle Detail Stok ---
   const toggleStockDetail = async (productId) => {
       if (productStockDetails[productId]) {
           setProductStockDetails(prev => ({ ...prev, [productId]: null }));
@@ -49,7 +103,6 @@ function ProductList() {
       }
       
       try {
-          // Panggil API backend khusus untuk detail stok per lokasi
           const response = await axios.get(`/api/products/${productId}/stock`); 
           setProductStockDetails(prev => ({ ...prev, [productId]: response.data }));
       } catch (err) {
@@ -97,16 +150,16 @@ function ProductList() {
       }
     }
 
-    fetchMasterData(); // Jalankan fetch master
-    fetchProductsData(); // Panggil fungsi internal
+    fetchMasterData(); 
+    fetchProductsData(); 
 
     // Cleanup function: set flag ke false saat unmount
     return () => {
       isMounted = false;
     };
-  }, [currentPage, activeSearch, sortBy, sortOrder, selectedCategory]); // Tambah selectedCategory sebagai dependency
+  }, [currentPage, activeSearch, sortBy, sortOrder, selectedCategory]); 
 
-  // --- Handlers CRUD --- (Tidak Berubah)
+  // --- Handlers CRUD ---
   const handleCloseFormModal = () => { setIsFormModalOpen(false); setEditingProduct(null); };
   const handleAddClick = () => { setEditingProduct(null); setIsFormModalOpen(true); };
   const handleEditClick = (product) => { setIsFormModalOpen(true); setEditingProduct(product); };
@@ -121,7 +174,6 @@ function ProductList() {
             toast.success('Produk baru berhasil ditambahkan!');
         }
         handleCloseFormModal();
-        // Trigger re-fetch di useEffect
         if (currentPage !== 1) setCurrentPage(1);
         else setCurrentPage(c => c); 
     } catch (err) {
@@ -138,11 +190,10 @@ function ProductList() {
         await axios.delete(`/api/products/${productToDelete.id}`);
         toast.success(`Produk "${productToDelete.name}" berhasil dihapus.`);
         
-        // Trigger re-fetch di useEffect
         if (products.length === 1 && currentPage > 1) {
             setCurrentPage(currentPage - 1);
         } else {
-            setCurrentPage(c => c); // Memaksa re-render untuk refresh data di halaman yang sama
+            setCurrentPage(c => c); 
         }
     } catch (err) {
         toast.error(err.response?.data?.msg || 'Gagal menghapus produk.');
@@ -161,24 +212,24 @@ function ProductList() {
     return sortOrder === 'ASC' ? ' ▲' : ' ▼';
   };
   
-  // Handler yang Memicu Fetching Ulang
   const handleSearchAndFilterSubmit = (e) => { 
     if (e) e.preventDefault(); 
     setCurrentPage(1); 
     setActiveSearch(searchQuery); 
-    // selectedCategory sudah menjadi dependency useEffect, jadi tidak perlu panggil fetch eksplisit.
   };
 
-  // Handler khusus untuk filter kategori
   const handleCategoryChange = (selectedOption) => {
       setSelectedCategory(selectedOption);
-      // Panggil submit handler agar filter aktif
       setCurrentPage(1);
       setActiveSearch(searchQuery); 
   }
   
   const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(currentPage + 1); };
   const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(currentPage - 1); };
+
+  if (loading) {
+    return <ProductListSkeleton isAdmin={isAdmin} />; // Tampilkan Skeleton
+  }
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg relative"> 
@@ -210,7 +261,7 @@ function ProductList() {
         )}
       </div>
 
-      {/* BARU: FILTER KATEGORI */}
+      {/* FILTER KATEGORI */}
       <div className='mb-6 max-w-sm'>
         <label className="block text-sm font-medium text-gray-700 mb-1">Filter Berdasarkan Kategori</label>
         <Select
@@ -223,8 +274,8 @@ function ProductList() {
       </div>
 
       {/* Tabel */}
-      {loading ? (
-        <p className="text-gray-500">Memuat data...</p>
+      {(products.length === 0 && !loading) ? (
+          <p className="text-gray-500">Tidak ada produk ditemukan.</p>
       ) : (
         <>
           <div className="overflow-x-auto">
@@ -264,7 +315,6 @@ function ProductList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {/* SAFETY CHECK: Gunakan products || [] */}
                 {(products || []).map((product) => (
                   <Fragment key={product.id}>
                     <tr className={productStockDetails[product.id] ? 'bg-blue-50' : ''}>

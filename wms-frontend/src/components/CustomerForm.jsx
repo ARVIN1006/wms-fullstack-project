@@ -1,59 +1,89 @@
 import { useState, useEffect } from 'react';
+// --- BARU: Import Hook Form dan Yup ---
+import { useForm } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import * as yup from 'yup';
+
+// --- DEFINISI SKEMA VALIDASI YUP ---
+const validationSchema = yup.object().shape({
+    name: yup.string().required('Nama Pelanggan wajib diisi.'),
+    contactPerson: yup.string().nullable(),
+    phone: yup.string().nullable(),
+    address: yup.string().nullable(),
+});
 
 function CustomerForm({ onSave, onClose, customerToEdit }) {
-  const [name, setName] = useState('');
-  const [contactPerson, setContactPerson] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  // --- BARU: INISIALISASI REACT HOOK FORM ---
+  const { 
+    register, 
+    handleSubmit, 
+    setValue, 
+    formState: { errors } 
+  } = useForm({
+    resolver: yupResolver(validationSchema),
+    defaultValues: {
+        name: '',
+        contactPerson: '',
+        phone: '',
+        address: '',
+    }
+  });
+  
   const [isEditing, setIsEditing] = useState(false);
 
   // Efek untuk mengisi form saat mode Edit
   useEffect(() => {
     if (customerToEdit) {
       setIsEditing(true);
-      setName(customerToEdit.name);
-      setContactPerson(customerToEdit.contact_person || '');
-      setPhone(customerToEdit.phone || '');
-      setAddress(customerToEdit.address || '');
+      // Mengisi nilai dengan setValue dari RHF
+      setValue('name', customerToEdit.name);
+      setValue('contactPerson', customerToEdit.contact_person || '');
+      setValue('phone', customerToEdit.phone || '');
+      setValue('address', customerToEdit.address || '');
     } else {
       setIsEditing(false);
+      // Reset form ke default values saat mode Add
+      setValue('name', '');
+      setValue('contactPerson', '');
+      setValue('phone', '');
+      setValue('address', '');
     }
-  }, [customerToEdit]);
+  }, [customerToEdit, setValue]);
 
-  // Fungsi saat tombol Simpan diklik
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!name) {
-      alert('Nama Pelanggan wajib diisi!');
-      return;
-    }
+  // Fungsi saat tombol Simpan diklik (MENGGUNAKAN RHF handleSubmit)
+  const onSubmit = (data) => {
     onSave({ 
       id: customerToEdit?.id,
-      name, 
-      contact_person: contactPerson, 
-      phone, 
-      address 
+      name: data.name, 
+      contact_person: data.contactPerson, 
+      phone: data.phone, 
+      address: data.address
     });
+  };
+
+  // Helper untuk menampilkan error
+  const ErrorMessage = ({ error }) => {
+    return error ? <p className="text-red-500 text-xs mt-1">{error.message}</p> : null;
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
         <h2 className="text-2xl font-bold mb-4">
-          {isEditing ? 'Edit Pelanggan' : 'Tambah Pelanggan Baru'}
+          {customerToEdit ? 'Edit Pelanggan' : 'Tambah Pelanggan Baru'}
         </h2>
         
-        <form onSubmit={handleSubmit}>
+        {/* MENGGUNAKAN handleSubmit DARI RHF */}
+        <form onSubmit={handleSubmit(onSubmit)}>
           {/* Nama Pelanggan */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">Nama Pelanggan *</label>
             <input
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-              required
+              {...register('name')} // Integrasi RHF
+              className={`w-full px-3 py-2 border rounded-md shadow-sm ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
             />
+            <ErrorMessage error={errors.name} />
           </div>
           
           {/* Contact Person */}
@@ -61,8 +91,7 @@ function CustomerForm({ onSave, onClose, customerToEdit }) {
             <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
             <input
               type="text"
-              value={contactPerson}
-              onChange={(e) => setContactPerson(e.target.value)}
+              {...register('contactPerson')} // Integrasi RHF
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
             />
           </div>
@@ -72,8 +101,7 @@ function CustomerForm({ onSave, onClose, customerToEdit }) {
             <label className="block text-sm font-medium text-gray-700 mb-1">Telepon</label>
             <input
               type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              {...register('phone')} // Integrasi RHF
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
             />
           </div>
@@ -82,8 +110,7 @@ function CustomerForm({ onSave, onClose, customerToEdit }) {
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
             <textarea
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              {...register('address')} // Integrasi RHF
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
             />
           </div>

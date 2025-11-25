@@ -5,6 +5,63 @@ import LocationForm from '../components/LocationForm';
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 
+// --- KOMPONEN SKELETON BARU ---
+const LocationListSkeleton = ({ isAdmin }) => {
+    // 5 Kolom: Nama Lokasi, Utilisasi, Deskripsi, Total Stok, Aksi
+    const columns = 5; 
+    
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {/* Nama Lokasi */}
+            <td className="px-6 py-4"><div className="h-4 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div></td>
+            
+            {/* Utilisasi Bar */}
+            <td className="px-6 py-4">
+                 <div className="w-2/3 h-2.5 bg-gray-300 rounded-full skeleton-shimmer"></div>
+            </td>
+            
+            {/* Deskripsi */}
+            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-full skeleton-shimmer"></div></td>
+
+            {/* Total Stok */}
+            <td className="px-6 py-4"><div className="h-4 bg-gray-300 rounded w-1/4 skeleton-shimmer"></div></td>
+            
+            {/* Aksi */}
+            <td className="px-6 py-4"><div className="h-4 bg-gray-400 rounded w-16 skeleton-shimmer"></div></td>
+        </tr>
+    );
+
+    return (
+        <div className="p-6 bg-white shadow-lg rounded-lg relative animate-pulse"> 
+            
+            {/* Header/Button Skeleton */}
+            <div className="flex justify-between items-center mb-6">
+                <div className="h-8 bg-gray-300 rounded w-1/3 skeleton-shimmer"></div>
+                <div className="h-10 bg-blue-300 rounded w-40 skeleton-shimmer"></div>
+            </div>
+            
+            {/* Table Skeleton */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            {Array.from({ length: columns }).map((_, i) => (
+                                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <div className="h-3 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {Array.from({ length: 10 }).map((_, i) => <TableRowSkeleton key={i} />)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
+
 function LocationList() {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +106,7 @@ function LocationList() {
   };
 
   const handleAddClick = () => {
+    if (!isAdmin) return;
     setEditingLocation(null);
     setIsFormModalOpen(true);
   };
@@ -76,6 +134,7 @@ function LocationList() {
   };
 
   const handleDeleteClick = (location) => {
+    if (!isAdmin) return;
     setLocationToDelete(location);
     setIsConfirmModalOpen(true);
   };
@@ -113,6 +172,12 @@ const UtilizationBar = ({ percentage }) => {
           </div>
       );
   };
+  
+  // --- RENDER UTAMA ---
+  if (loading) {
+    return <LocationListSkeleton isAdmin={isAdmin} />; // Tampilkan Skeleton saat loading
+  }
+
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg relative"> 
       
@@ -129,8 +194,8 @@ const UtilizationBar = ({ percentage }) => {
       </div>
 
       {/* Tabel */}
-      {loading ? (
-        <p className="text-gray-500">Memuat data...</p>
+      {locations.length === 0 && !loading ? (
+        <p className="text-gray-500">Tidak ada data lokasi.</p>
       ) : (
         <>
           <div className="overflow-x-auto">

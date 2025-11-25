@@ -8,11 +8,15 @@ function StatusInventoryReport() {
   const [reports, setReports] = useState([]);
   const [stockStatuses, setStockStatuses] = useState([]); // Daftar status untuk filter
   const [loading, setLoading] = useState(true);
+  
+  // FIX: TAMBAHKAN DEKLARASI STATE LOKASI YANG HILANG
+  const [locations, setLocations] = useState([]); 
 
   // --- STATE FILTER ---
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedStatus, setSelectedStatus] = useState(null); 
+  const [selectedLocation, setSelectedLocation] = useState(null); 
 
   // Definisi Header untuk file CSV
   const csvHeaders = [
@@ -27,8 +31,10 @@ function StatusInventoryReport() {
     { label: "Operator", key: "operator_name" },
   ];
   
-  const getExportData = () => {
-      return reports.map(item => ({
+  // FIX: Mengubah getExportData menjadi ASYNC untuk kompatibilitas ExportButton
+  const getExportData = async () => {
+      // Menggunakan (reports || []) untuk pemeriksaan keamanan
+      return (reports || []).map(item => ({
           ...item,
           transaction_date: new Date(item.transaction_date).toLocaleString('id-ID'),
           expiry_date: item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('id-ID') : '-',
@@ -36,61 +42,69 @@ function StatusInventoryReport() {
       }));
   }
 
-  useEffect(() => {
-    let isMounted = true; // BARU: Flag untuk cleanup
-
-    async function fetchMasterData() {
-      try {
-        const statusRes = await axios.get('/api/reports/stock-statuses'); 
-        if (isMounted) { // Cek sebelum set state
-          // Filter 'Good' agar tidak muncul di opsi filter
-          setStockStatuses(statusRes.data.filter(s => s.name !== 'Good'));
-        }
-      } catch (err) {
-        if (isMounted) toast.error('Gagal memuat data master status.');
-      }
-    }
-    fetchMasterData();
-    fetchReports(); // Muat laporan awal (tetap panggil fetchReports yang di bawah)
-    
-    // BARU: Cleanup function
-    return () => {
-        isMounted = false;
-    };
-  }, []); // Hanya dipanggil sekali saat load
-
   // Fungsi Fetch Laporan
-  // PERBAIKAN: Tambahkan isMounted check di sini untuk pemanggilan filter
-  async function fetchReports() {
-    let isMounted = true; // BARU: Tambahkan flag lokal
+  async function fetchReports(isMounted) {
     try {
       if (isMounted) setLoading(true);
       
       const params = {
           startDate: startDate || undefined,
           endDate: endDate || undefined,
-          statusId: selectedStatus?.value || undefined
+          statusId: selectedStatus?.value || undefined,
+          locationId: selectedLocation?.value || undefined
       };
       
       const response = await axios.get('/api/reports/status-inventory', { params }); 
-      if (isMounted) setReports(response.data);
+      if (isMounted) setReports(response.data.reports); // Asumsi backend mengembalikan objek {reports: [...]}
     } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
         if (isMounted) toast.error('Gagal memuat data laporan status.');
       }
+      if (isMounted) setReports([]); // Pastikan reports menjadi array kosong jika gagal
     } finally {
       if (isMounted) setLoading(false);
     }
-    // Tambahkan pengembalian cleanup jika fungsi ini dipanggil di luar useEffect
-    return () => { isMounted = false; };
   }
   
-  // Handler Submit Filter
+  // --- Ambil Data Master & Laporan (Efek Awal) ---
+  useEffect(() => {
+    let isMounted = true; 
+
+    async function fetchMasterData() {
+      try {
+        const [statusRes, locationRes] = await Promise.all([
+          axios.get('/api/reports/stock-statuses'),
+          axios.get('/api/locations')
+        ]);
+        
+        if (isMounted) { 
+          // Filter 'Good' agar tidak muncul di opsi filter
+          setStockStatuses(statusRes.data.filter(s => s.name !== 'Good'));
+          setLocations(locationRes.data); // Set lokasi
+        }
+      } catch (err) {
+        if (isMounted) toast.error('Gagal memuat data master.');
+      }
+    }
+    fetchMasterData();
+    
+    // Cleanup function
+    return () => {
+        isMounted = false;
+    };
+  }, []); 
+
+  // --- Efek yang Memicu Re-fetch saat Filter Berubah ---
+  useEffect(() => {
+    let isMounted = true;
+    fetchReports(isMounted);
+    return () => { isMounted = false; };
+  }, [startDate, endDate, selectedStatus, selectedLocation]); // Dependensi filter
+
+  
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      const cleanup = fetchReports(); // Panggil ulang dengan state filter saat ini
-      // Di sini kita tidak bisa menggunakan cleanup return, 
-      // tapi penambahan flag di fetchReports sudah membantu.
+      // Filter otomatis di-trigger oleh useEffect saat state filter berubah.
   }
 
   const statusOptions = [
@@ -98,13 +112,18 @@ function StatusInventoryReport() {
       ...stockStatuses.map(s => ({ value: s.id, label: s.name }))
   ];
 
+  const locationOptions = [
+    { value: '', label: 'Semua Lokasi' },
+    ...locations.map(l => ({ value: l.id, label: l.name }))
+]; // Akses locations yang sudah dideklarasikan
+
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg">
       <h1 className="text-2xl font-bold text-gray-800 mb-4">📦 Laporan Stok Rusak/Kadaluarsa</h1>
       
       {/* --- FORM FILTER --- */}
       <form onSubmit={handleFilterSubmit} className="mb-6 p-4 border rounded-lg bg-gray-50">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
             
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
@@ -125,9 +144,21 @@ function StatusInventoryReport() {
                     classNamePrefix="react-select"
                 />
             </div>
+             <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Filter Lokasi</label>
+                <Select
+                    options={locationOptions}
+                    value={selectedLocation}
+                    onChange={setSelectedLocation}
+                    placeholder="Semua Lokasi"
+                    isClearable={true}
+                    classNamePrefix="react-select"
+                />
+            </div>
             <div>
+                {/* Tombol filter disederhanakan karena filter di-trigger oleh useEffect */}
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">
-                    Tampilkan Laporan
+                    Tampilkan
                 </button>
             </div>
         </div>
@@ -136,7 +167,7 @@ function StatusInventoryReport() {
       {/* Tombol Ekspor */}
       <div className="flex justify-end items-center mb-6">
         <ExportButton 
-            data={getExportData()} 
+            data={getExportData} // FIX: Meneruskan REFERENSI fungsi ASYNC
             headers={csvHeaders} 
             filename={`Laporan_Stok_Rusak_${new Date().toISOString().slice(0, 10)}.csv`}
         >
@@ -162,7 +193,7 @@ function StatusInventoryReport() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {reports.map((item) => (
+              {(reports || []).map((item) => (
                 <tr key={item.item_id}> 
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(item.transaction_date).toLocaleString('id-ID')}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.product_name} ({item.sku})</td>
@@ -184,7 +215,7 @@ function StatusInventoryReport() {
           </table>
         </div>
       )}
-      {reports.length === 0 && !loading && (
+      {(reports || []).length === 0 && !loading && (
           <p className='text-gray-500 mt-4'>Tidak ada data stok rusak/kadaluarsa ditemukan.</p>
       )}
     </div>

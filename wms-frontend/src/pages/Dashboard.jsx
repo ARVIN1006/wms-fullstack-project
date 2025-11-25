@@ -31,6 +31,80 @@ const ActivityIcon = ({ type }) => {
   );
 };
 
+// --- KOMPONEN SKELETON BARU ---
+const DashboardSkeleton = ({ isAdmin }) => {
+    // Skeleton untuk 3 kartu utama
+    const CardSkeleton = () => (
+        <div className="bg-white p-6 rounded-lg shadow-lg skeleton-shimmer h-28">
+            <div className="h-4 bg-gray-300 rounded w-1/2 mb-4"></div>
+            <div className="h-8 bg-gray-400 rounded w-3/4"></div>
+        </div>
+    );
+
+    // Skeleton untuk baris tabel
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {/* 6 Kolom (untuk admin) atau 4 kolom (untuk staff) */}
+            {Array.from({ length: isAdmin ? 6 : 4 }).map((_, i) => (
+                <td key={i} className="px-6 py-4">
+                    <div className="h-4 bg-gray-300 rounded skeleton-shimmer"></div>
+                </td>
+            ))}
+        </tr>
+    );
+
+    return (
+        <div className="p-6 space-y-6 animate-pulse">
+            <div className="h-10 bg-gray-300 rounded w-1/4 mb-6"></div>
+            
+            {/* Cards Skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <CardSkeleton />
+                <CardSkeleton />
+                <CardSkeleton />
+            </div>
+
+            {/* Chart + Activity Skeleton */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Chart placeholder */}
+                {isAdmin && (
+                    <div className="lg:col-span-2 bg-white p-6 shadow-lg rounded-lg h-96 skeleton-shimmer">
+                        <div className="h-6 bg-gray-300 rounded w-1/3 mb-4"></div>
+                        <div className="h-72 bg-gray-200 rounded"></div>
+                    </div>
+                )}
+                {/* Activity placeholder */}
+                <div className={`${isAdmin ? 'lg:col-span-1' : 'lg:col-span-3'} bg-white p-6 shadow-lg rounded-lg h-96 skeleton-shimmer`}>
+                    <div className="h-6 bg-gray-300 rounded w-2/3 mb-4"></div>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-3 mb-4">
+                            <div className="w-8 h-8 rounded-full bg-gray-300"></div>
+                            <div className="flex-1 space-y-2">
+                                <div className="h-4 bg-gray-300 rounded w-full"></div>
+                                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            
+            {/* Table Skeleton */}
+            <div className="bg-white p-6 shadow-lg rounded-lg mt-6">
+                <div className="h-6 bg-gray-300 rounded w-1/4 mb-4"></div>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50"><TableRowSkeleton /></thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} />)}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
+
 function Dashboard() {
   const [stats, setStats] = useState({ productCount: 0, locationCount: 0 });
   const [stocks, setStocks] = useState([]);
@@ -91,7 +165,6 @@ function Dashboard() {
         });
         setLowStockItems(lowStockRes.data);
         setRecentActivity(activityRes.data);
-        // Set total asset value (HPP KESELURUHAN)
         setTotalAssetValue(parseFloat(financialRes.data.valuation.total_asset_value || 0));
       }
     } catch (err) {
@@ -128,7 +201,7 @@ function Dashboard() {
     };
   }, [stockCurrentPage]); 
 
-  // Data untuk grafik stok teratas 
+  // Data untuk grafik stok teratas (diambil dari stocks state, yang hanya berisi 1 halaman)
   const top5Stocks = stocks
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 5);
@@ -172,10 +245,23 @@ function Dashboard() {
   };
 
 
-  if (loading && stockTotalCount === 0) { 
-    return <div className="p-6">Memuat data dashboard...</div>;
+  if (loading) { 
+    return <DashboardSkeleton isAdmin={isAdmin} />; // Tampilkan Skeleton saat loading
   }
 
+  // Jika tidak loading dan tidak ada stok sama sekali
+  if (stocks.length === 0 && stockTotalCount === 0) {
+      return (
+        <div className="p-6 space-y-6">
+            <h1 className="text-3xl font-bold text-gray-800">🏠 Dashboard</h1>
+            <div className="bg-white p-6 rounded-lg shadow-lg">
+                 <p className="text-gray-500">Data gudang kosong. Silakan tambahkan produk dan transaksi.</p>
+            </div>
+        </div>
+      );
+  }
+  
+  // Jika loading selesai dan data ada, tampilkan konten dashboard
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-3xl font-bold text-gray-800">🏠 Dashboard</h1>
@@ -223,7 +309,7 @@ function Dashboard() {
           </h2>
           <p className="text-4xl font-bold text-green-600">
             {isAdmin
-              ? formatCurrency(totalAssetValue) // MENGGUNAKAN HPP KESELURUHAN
+              ? formatCurrency(totalAssetValue) 
               : `${stockTotalCount} unit`} 
           </p>
         </div>
@@ -344,13 +430,11 @@ function Dashboard() {
                   </td>
                   {isAdmin && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700">
-                      {/* item.purchase_price berasal dari s.average_cost */}
                       {formatCurrency(item.purchase_price)} 
                     </td>
                   )}
                   {isAdmin && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-900">
-                      {/* item.stock_value berasal dari s.quantity * s.average_cost */}
                       {formatCurrency(item.stock_value)} 
                     </td>
                   )}

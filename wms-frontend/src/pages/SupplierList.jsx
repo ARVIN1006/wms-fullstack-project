@@ -3,9 +3,67 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import SupplierForm from '../components/SupplierForm';
 import ConfirmModal from '../components/ConfirmModal';
-import { useAuth } from '../context/AuthContext'; // Impor useAuth untuk role
+import { useAuth } from '../context/AuthContext'; 
 
 const LIMIT_PER_PAGE = 10;
+
+// --- KOMPONEN SKELETON BARU ---
+const SupplierListSkeleton = ({ isAdmin }) => {
+    // 5 Kolom: Nama, Contact, Phone, Address, Aksi
+    const columns = 5; 
+    
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {Array.from({ length: columns }).map((_, i) => (
+                <td key={i} className="px-6 py-4">
+                    <div className="h-4 bg-gray-300 rounded skeleton-shimmer"></div>
+                </td>
+            ))}
+        </tr>
+    );
+
+    return (
+        <div className="p-6 bg-white shadow-lg rounded-lg relative animate-pulse"> 
+            
+            {/* Header/Search/Button Skeleton */}
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <div className="h-8 bg-gray-300 rounded w-1/3 skeleton-shimmer"></div>
+                
+                <div className="flex gap-2 w-full md:w-auto">
+                    <div className="h-10 bg-gray-300 rounded w-full md:w-64 skeleton-shimmer"></div>
+                    <div className="h-10 bg-gray-300 rounded w-20 skeleton-shimmer"></div>
+                </div>
+                
+                 <div className="h-10 bg-blue-300 rounded w-full md:w-40 skeleton-shimmer"></div>
+            </div>
+            
+            {/* Table Skeleton */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            {Array.from({ length: columns }).map((_, i) => (
+                                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <div className="h-3 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {Array.from({ length: LIMIT_PER_PAGE }).map((_, i) => <TableRowSkeleton key={i} />)}
+                    </tbody>
+                </table>
+            </div>
+             {/* Pagination Skeleton */}
+            <div className="flex justify-between items-center mt-6">
+                <div className="h-8 bg-gray-300 rounded w-32 skeleton-shimmer"></div>
+                <div className="h-8 bg-gray-300 rounded w-20 skeleton-shimmer"></div>
+                <div className="h-8 bg-gray-300 rounded w-32 skeleton-shimmer"></div>
+            </div>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
 
 function SupplierList() {
   const [suppliers, setSuppliers] = useState([]);
@@ -23,19 +81,20 @@ function SupplierList() {
 
   // Role dari Context
   const { userRole } = useAuth();
+  const isAdmin = userRole === 'admin';
 
   // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
-    let isMounted = true; // BARU: Flag untuk melacak status mounting
+    let isMounted = true; 
 
     async function fetchSuppliersData() {
       try {
-        if (isMounted) setLoading(true); // Cek sebelum set loading
+        if (isMounted) setLoading(true); 
         const response = await axios.get(
           `/api/suppliers?page=${currentPage}&limit=${LIMIT_PER_PAGE}&search=${activeSearch}`
         );
         
-        if (isMounted) { // Cek sebelum set state
+        if (isMounted) { 
           setSuppliers(response.data.suppliers);
           setTotalPages(response.data.totalPages);
           setCurrentPage(response.data.currentPage);
@@ -45,17 +104,16 @@ function SupplierList() {
           toast.error('Gagal memuat data supplier.');
         }
       } finally {
-        if (isMounted) setLoading(false); // Cek sebelum set loading
+        if (isMounted) setLoading(false); 
       }
     }
 
     fetchSuppliersData();
 
-    // Cleanup function: set flag ke false saat unmount
     return () => {
       isMounted = false;
     };
-  }, [currentPage, activeSearch]); // Dependency array tetap sama
+  }, [currentPage, activeSearch]); 
 
   // --- Handlers Modal & CRUD ---
   const handleCloseFormModal = () => {
@@ -69,11 +127,13 @@ function SupplierList() {
   };
 
   const handleEditClick = (supplier) => {
+    if (!isAdmin) return;
     setEditingSupplier(supplier);
     setIsFormModalOpen(true);
   };
 
   const handleSaveSupplier = async (supplierData) => {
+    if (!isAdmin) return;
     try {
       if (supplierData.id) {
         // UPDATE
@@ -94,6 +154,7 @@ function SupplierList() {
   };
 
   const handleDeleteClick = (supplier) => {
+    if (!isAdmin) return;
     setSupplierToDelete(supplier);
     setIsConfirmModalOpen(true);
   };
@@ -127,6 +188,11 @@ function SupplierList() {
   const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(currentPage + 1); };
   const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(currentPage - 1); };
 
+  // --- RENDER UTAMA ---
+  if (loading) {
+    return <SupplierListSkeleton isAdmin={isAdmin} />; // Tampilkan Skeleton saat loading
+  }
+
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg relative"> 
       
@@ -149,7 +215,7 @@ function SupplierList() {
         </form>
         
         {/* Tombol Tambah (Hanya untuk Admin) */}
-        {userRole === 'admin' && (
+        {isAdmin && (
           <button onClick={handleAddClick} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded w-full md:w-auto">
             + Tambah Supplier
           </button>
@@ -157,8 +223,8 @@ function SupplierList() {
       </div>
 
       {/* Tabel */}
-      {loading ? (
-        <p className="text-gray-500">Memuat data...</p>
+      {suppliers.length === 0 && !loading ? (
+        <p className="text-gray-500">Tidak ada data supplier.</p>
       ) : (
         <>
           <div className="overflow-x-auto">
@@ -182,7 +248,7 @@ function SupplierList() {
                     
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       {/* Tombol Aksi (Hanya untuk Admin) */}
-                      {userRole === 'admin' && (
+                      {isAdmin && (
                         <>
                           <button 
                             onClick={() => handleEditClick(supplier)}
@@ -198,7 +264,7 @@ function SupplierList() {
                           </button>
                         </>
                       )}
-                      {!userRole || userRole === 'staff' && (
+                      {!isAdmin && (
                           <span className="text-gray-400 text-xs">Lihat saja</span>
                       )}
                     </td>

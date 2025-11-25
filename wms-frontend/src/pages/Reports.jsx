@@ -20,6 +20,71 @@ const calculateDuration = (start, end) => {
     return (diffMs / 60000).toFixed(2); // ms ke menit
 };
 
+// --- KOMPONEN SKELETON BARU ---
+const ReportsSkeleton = () => {
+    // 10 Kolom dalam tabel riwayat transaksi
+    const columns = 10; 
+    
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {Array.from({ length: columns }).map((_, i) => (
+                <td key={i} className="px-6 py-4">
+                    {/* Variasi ukuran skeleton untuk simulasi data */}
+                    <div className={`h-4 bg-gray-300 rounded skeleton-shimmer ${i === 2 ? 'w-3/4' : 'w-full'}`}></div>
+                </td>
+            ))}
+        </tr>
+    );
+
+    return (
+        <div className="p-6 bg-white shadow-lg rounded-lg animate-pulse"> 
+            <div className="h-8 bg-gray-300 rounded w-1/3 mb-4 skeleton-shimmer"></div>
+            
+            {/* Filter Form Skeleton */}
+            <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="h-10 bg-gray-300 rounded skeleton-shimmer"></div>
+                    ))}
+                </div>
+            </div>
+            
+            {/* Total Count & Export Button Skeleton */}
+            <div className="flex justify-between items-center mb-6">
+                <div className="h-4 bg-gray-300 rounded w-20 skeleton-shimmer"></div>
+                <div className="h-10 bg-indigo-300 rounded w-40 skeleton-shimmer"></div>
+            </div>
+            
+            {/* Table Skeleton */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        {/* Header Row Placeholder */}
+                        <tr>
+                            {Array.from({ length: columns }).map((_, i) => (
+                                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <div className="h-3 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {/* 10 Rows Placeholder */}
+                        {Array.from({ length: 10 }).map((_, i) => <TableRowSkeleton key={i} />)}
+                    </tbody>
+                </table>
+            </div>
+             {/* Pagination Skeleton */}
+            <div className="flex justify-between items-center mt-6">
+                <div className="h-8 bg-gray-300 rounded w-32 skeleton-shimmer"></div>
+                <div className="h-8 bg-gray-300 rounded w-20 skeleton-shimmer"></div>
+                <div className="h-8 bg-gray-300 rounded w-32 skeleton-shimmer"></div>
+            </div>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
+
 
 function Reports() {
   const [reports, setReports] = useState([]);
@@ -187,6 +252,10 @@ function Reports() {
   }));
   const partyPlaceholder = type.value === 'IN' ? 'Pilih Supplier' : 'Pilih Pelanggan';
 
+  // --- RENDER UTAMA ---
+  if (loading) {
+    return <ReportsSkeleton />; // Tampilkan Skeleton saat loading
+  }
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg">
@@ -252,7 +321,7 @@ function Reports() {
       <div className="flex justify-between items-center mb-6"> 
         <p className='text-sm font-medium text-gray-600'>Total Data: {totalCount}</p> 
         <ExportButton 
-            data={getExportData} // Passing function untuk fetch data ekspor non-paginated
+            data={getExportData} // Menggunakan fungsi async
             headers={csvHeaders} 
             filename={`Laporan_WMS_${new Date().toISOString().slice(0, 10)}.csv`}
         >
@@ -260,8 +329,8 @@ function Reports() {
         </ExportButton>
       </div>
 
-      {loading ? (
-        <p className="text-gray-500">Memuat data...</p>
+      {reports.length === 0 && !loading ? (
+        <p className="text-gray-500 mt-4">Tidak ada data transaksi tercatat dengan filter ini.</p>
       ) : (
         <> 
             <div className="overflow-x-auto">
@@ -326,9 +395,6 @@ function Reports() {
                 </div>
             </div>
         </>
-      )}
-      {reports.length === 0 && !loading && (
-          <p className='text-gray-500 mt-4'>Tidak ada data transaksi tercatat dengan filter ini.</p>
       )}
     </div>
   );

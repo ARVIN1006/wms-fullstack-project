@@ -1,22 +1,55 @@
-import { useState, useEffect, useRef } from "react";
-import axios from "axios";
-import { toast } from "react-hot-toast";
-import UserForm from "../components/UserForm";
-import ConfirmModal from "../components/ConfirmModal";
-import { useAuth } from "../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { toast } from 'react-hot-toast';
+import UserForm from '../components/UserForm';
+import ConfirmModal from '../components/ConfirmModal';
+import { useAuth } from '../context/AuthContext';
 
-// Helper function untuk decode JWT dan mengambil username
-const getUsernameFromToken = (token) => {
-  try {
-    if (!token) return null;
-    const payload = token.split(".")[1];
-    const decodedPayload = JSON.parse(atob(payload)); // atob untuk base64 decode
-    return decodedPayload.user.username; // Mengambil username dari token
-  } catch (e) {
-    return null;
-  }
+// --- KOMPONEN SKELETON BARU ---
+const AdminControlSkeleton = () => {
+    // 4 Kolom: Username, Role, Created At, Aksi
+    const columns = 4; 
+    
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {Array.from({ length: columns }).map((_, i) => (
+                <td key={i} className="px-6 py-4">
+                    <div className={`h-4 bg-gray-300 rounded skeleton-shimmer ${i === 3 ? 'w-1/3' : 'w-1/2'}`}></div>
+                </td>
+            ))}
+        </tr>
+    );
+
+    return (
+        <div className="p-6 bg-white shadow-lg rounded-lg relative animate-pulse"> 
+            
+            {/* Header & Button Skeleton */}
+            <div className="flex justify-between items-center mb-6">
+                <div className="h-8 bg-gray-300 rounded w-1/4 skeleton-shimmer"></div>
+                <div className="h-10 bg-blue-300 rounded w-40 skeleton-shimmer"></div>
+            </div>
+            
+            {/* Table Skeleton */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            {Array.from({ length: columns }).map((_, i) => (
+                                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <div className="h-3 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} />)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 };
+// --- END KOMPONEN SKELETON ---
 
 function AdminControl() {
   const [users, setUsers] = useState([]);
@@ -26,220 +59,136 @@ function AdminControl() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
 
-  const { userRole, token } = useAuth(); // FIX: Hanya ambil userRole dan token
-  const navigate = useNavigate();
+  const { userRole, userId: currentUserId } = useAuth();
 
-  const currentUsername = getUsernameFromToken(token); // BARU: Dapatkan username saat ini
-  const [adminCount, setAdminCount] = useState(0); // State untuk menghitung Admin
-
-  // **********************************************
-  // PERBAIKAN 1: Gunakan useRef untuk melacak status mounting
-  // **********************************************
-  const isMountedRef = useRef(true); 
-
-  // Redirect jika bukan admin (walaupun backend sudah jaga)
-  useEffect(() => {
-    if (userRole && userRole !== "admin") {
-      toast.error("Akses ditolak. Hanya Admin yang bisa melihat halaman ini.");
-      navigate("/");
-    }
-  }, [userRole, navigate]); // Dipanggil saat role user berubah
-
-  // Fetch semua users
-  // **********************************************
-  // PERBAIKAN 2: Cek isMountedRef.current sebelum set state
-  // **********************************************
-  async function fetchUsers() {
-    if (userRole !== "admin") return;
+  // Fungsi Fetch User List
+  const fetchUsers = async (isMounted) => {
+    if (userRole !== 'admin') return;
     try {
-      // Hanya set loading jika komponen masih terpasang
-      if (isMountedRef.current) setLoading(true);
-      
-      // Panggil API users
-      const response = await axios.get("/api/users");
-      const allUsers = response.data;
-
-      if (isMountedRef.current) { // Cek sebelum set state
-        // Hitung jumlah admin yang ada
-        const currentAdminCount = allUsers.filter(
-          (u) => u.role === "admin"
-        ).length;
-        setAdminCount(currentAdminCount);
-
-        setUsers(allUsers); // <-- Hanya dipanggil jika isMountedRef.current
-      }
+      if (isMounted) setLoading(true);
+      const response = await axios.get('/api/users');
+      if (isMounted) setUsers(response.data);
     } catch (err) {
-      if (isMountedRef.current) {
-        toast.error(err.response?.data?.msg || "Gagal memuat data users.");
-      }
+      if (isMounted) toast.error('Gagal memuat daftar pengguna.');
     } finally {
-      if (isMountedRef.current) setLoading(false); // <-- Hanya dipanggil jika isMountedRef.current
+      if (isMounted) setLoading(false);
     }
-  }
+  };
 
-  // Efek untuk memuat data saat token/role berubah
   useEffect(() => {
-    isMountedRef.current = true; // Set ke true saat mount/dependencies berubah
-    fetchUsers();
-    
-    // **********************************************
-    // PERBAIKAN 3: Cleanup Function
-    // **********************************************
-    return () => {
-      isMountedRef.current = false; // Set ke false saat unmount
-    };
-  }, [token, userRole]);
+    let isMounted = true;
+    fetchUsers(isMounted);
+    return () => { isMounted = false; };
+  }, [userRole]);
 
-  // Handlers CRUD
-  const handleCloseFormModal = () => {
-    setIsFormModalOpen(false);
-    setEditingUser(null);
-  };
-  const handleAddClick = () => {
-    setEditingUser(null);
-    setIsFormModalOpen(true);
-  };
-  const handleEditClick = (user) => {
+  // Handlers Modal & CRUD
+  const handleCloseFormModal = () => { setIsFormModalOpen(false); setEditingUser(null); };
+  const handleAddClick = () => { setEditingUser(null); setIsFormModalOpen(true); };
+  
+  const handleEditClick = (user) => { 
     setEditingUser(user);
-    setIsFormModalOpen(true);
+    setIsFormModalOpen(true); 
   };
 
   const handleSaveUser = async (userData) => {
     try {
       if (userData.id) {
-        // Edit User (Gunakan API PUT)
+        // UPDATE
         await axios.put(`/api/users/${userData.id}`, userData);
-        toast.success("Role/User berhasil diupdate!");
+        toast.success('Hak akses pengguna berhasil diupdate!');
       } else {
-        // Buat User Baru (Gunakan API register yang sudah dikunci Admin)
-        await axios.post("/api/auth/register", userData);
-        toast.success("User baru berhasil didaftarkan!");
+        // CREATE / REGISTER
+        await axios.post('/api/auth/register', userData);
+        toast.success('Pengguna baru berhasil ditambahkan!');
       }
       handleCloseFormModal();
-      fetchUsers(); // Panggil ulang untuk refresh data
+      fetchUsers(true);
     } catch (err) {
-      toast.error(err.response?.data?.msg || "Gagal menyimpan user.");
+      toast.error(err.response?.data?.msg || 'Gagal menyimpan data pengguna.');
     }
   };
 
   const handleDeleteClick = (user) => {
+    if (user.id === currentUserId) {
+        toast.error("Anda tidak bisa menghapus akun Anda sendiri.");
+        return;
+    }
     setUserToDelete(user);
     setIsConfirmModalOpen(true);
   };
-  const handleCloseConfirmModal = () => {
-    setIsConfirmModalOpen(false);
-    setUserToDelete(null);
-  };
+
+  const handleCloseConfirmModal = () => { setIsConfirmModalOpen(false); setUserToDelete(null); };
 
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
     try {
       await axios.delete(`/api/users/${userToDelete.id}`);
-      toast.success(`User "${userToDelete.username}" berhasil dihapus.`);
-      fetchUsers(); // Panggil ulang untuk refresh data
+      toast.success(`Pengguna ${userToDelete.username} berhasil dihapus.`);
+      fetchUsers(true);
     } catch (err) {
-      toast.error(err.response?.data?.msg || "Gagal menghapus user.");
+      toast.error(err.response?.data?.msg || 'Gagal menghapus pengguna.');
     } finally {
       handleCloseConfirmModal();
     }
   };
+  
+  if (userRole !== 'admin') {
+      return <div className="p-6">Anda tidak memiliki akses ke halaman ini.</div>;
+  }
 
-  // Fungsi yang digunakan saat render untuk cek status admin
-  const isLastAdmin = (user) => {
-    // Admin terakhir adalah Admin yang sedang dilihat DAN jumlah admin total <= 1
-    return user.role === "admin" && adminCount <= 1;
-  };
-
-  const isCurrentUser = (user) => {
-    // Periksa apakah user yang sedang dilihat adalah user yang sedang login
-    return user.username === currentUsername; // FIXED: Menggunakan username yang sudah didecode dari token
-  };
-
-  if (userRole !== "admin") {
-    return null; // Akan di-redirect oleh useEffect jika bukan admin
+  // --- RENDER UTAMA ---
+  if (loading) {
+    return <AdminControlSkeleton />; // Tampilkan Skeleton saat loading
   }
 
   return (
-    <div className="p-6 bg-white shadow-lg rounded-lg relative">
+    <div className="p-6 bg-white shadow-lg rounded-lg relative"> 
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">
-          Admin Control Panel
-        </h1>
-
-        <button
-          onClick={handleAddClick}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-        >
-          + Buat Akun Baru
+        <h1 className="text-2xl font-bold text-gray-800">⚙️ Admin Control: Manajemen User</h1>
+        <button onClick={handleAddClick} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+          + Tambah User Baru
         </button>
       </div>
 
-      {loading ? (
-        <p className="text-gray-500">Memuat data...</p>
+      {users.length === 0 ? (
+        <p className="text-gray-500">Tidak ada pengguna lain terdaftar.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Username
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Dibuat Pada
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Aksi
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dibuat Pada</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aksi</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {users.map((user) => (
-                <tr key={user.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    {user.username}{" "}
-                    {isCurrentUser(user) && (
-                      <span className="text-xs text-blue-500">(Anda)</span>
-                    )}
-                  </td>
+                <tr key={user.id} className={user.id === currentUserId ? 'bg-yellow-50' : ''}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{user.username} {user.id === currentUserId && '(Anda)'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span
-                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        user.role === "admin"
-                          ? "bg-indigo-100 text-indigo-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${user.role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800'}`}>
                       {user.role.toUpperCase()}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
-
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button
+                    <button 
                       onClick={() => handleEditClick(user)}
-                      disabled={isLastAdmin(user)} // DISABLE JIKA ADMIN TERAKHIR
-                      className="text-indigo-600 hover:text-indigo-900 disabled:text-gray-400"
+                      className="text-indigo-600 hover:text-indigo-900"
                     >
                       Edit Role
                     </button>
-
-                    <button
-                      onClick={() => handleDeleteClick(user)}
-                      disabled={isCurrentUser(user) || isLastAdmin(user)} // DISABLE JIKA ADMIN TERAKHIR ATAU DIRI SENDIRI
-                      className="text-red-600 hover:text-red-900 disabled:text-gray-400"
-                    >
-                      Hapus
-                    </button>
-
-                    {isLastAdmin(user) && (
-                      <span className="text-xs text-red-500 ml-2">
-                        (Admin Terakhir)
-                      </span>
+                    {user.id !== currentUserId && (
+                      <button 
+                        onClick={() => handleDeleteClick(user)} 
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        Hapus
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -249,20 +198,20 @@ function AdminControl() {
         </div>
       )}
 
-      {/* Modal Form Tambah/Edit */}
+      {/* Modal Form */}
       {isFormModalOpen && (
-        <UserForm
+        <UserForm 
           onClose={handleCloseFormModal}
           onSave={handleSaveUser}
-          userToEdit={editingUser}
+          userToEdit={editingUser} 
         />
       )}
 
       {/* Modal Konfirmasi Hapus */}
       {isConfirmModalOpen && (
         <ConfirmModal
-          title="Hapus User"
-          message={`Apakah Anda yakin ingin menghapus user "${userToDelete?.username}"? Aksi ini tidak dapat dibatalkan.`}
+          title="Hapus Pengguna"
+          message={`Apakah Anda yakin ingin menghapus pengguna "${userToDelete?.username}"?`}
           onConfirm={handleConfirmDelete}
           onCancel={handleCloseConfirmModal}
         />

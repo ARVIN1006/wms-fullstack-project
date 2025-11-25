@@ -8,6 +8,69 @@ import ExportButton from '../components/ExportButton';
 
 const LIMIT_PER_PAGE = 10;
 
+// --- KOMPONEN SKELETON BARU ---
+const CustomerListSkeleton = ({ isAdmin }) => {
+    // 5 Kolom: Nama, Contact, Phone, Address, Aksi
+    const columns = 5; 
+    
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {Array.from({ length: columns }).map((_, i) => (
+                <td key={i} className="px-6 py-4">
+                    <div className="h-4 bg-gray-300 rounded skeleton-shimmer"></div>
+                </td>
+            ))}
+        </tr>
+    );
+
+    return (
+        <div className="p-6 bg-white shadow-lg rounded-lg relative animate-pulse"> 
+            
+            {/* Header/Search/Button Skeleton */}
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <div className="h-8 bg-gray-300 rounded w-1/3 skeleton-shimmer"></div>
+                
+                <div className="flex gap-2 w-full md:w-auto">
+                    <div className="h-10 bg-gray-300 rounded w-full md:w-64 skeleton-shimmer"></div>
+                    <div className="h-10 bg-gray-300 rounded w-20 skeleton-shimmer"></div>
+                </div>
+                
+                 {/* Tombol Tambah & Ekspor */}
+                 <div className="flex gap-2 w-full md:w-auto">
+                    <div className="h-10 bg-blue-300 rounded w-full md:w-40 skeleton-shimmer"></div>
+                    <div className="h-10 bg-indigo-300 rounded w-full md:w-40 skeleton-shimmer"></div>
+                 </div>
+            </div>
+            
+            {/* Table Skeleton */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            {Array.from({ length: columns }).map((_, i) => (
+                                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <div className="h-3 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {Array.from({ length: LIMIT_PER_PAGE }).map((_, i) => <TableRowSkeleton key={i} />)}
+                    </tbody>
+                </table>
+            </div>
+             {/* Pagination Skeleton */}
+            <div className="flex justify-between items-center mt-6">
+                <div className="h-8 bg-gray-300 rounded w-32 skeleton-shimmer"></div>
+                <div className="h-8 bg-gray-300 rounded w-20 skeleton-shimmer"></div>
+                <div className="h-8 bg-gray-300 rounded w-32 skeleton-shimmer"></div>
+            </div>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
+
+
 function CustomerList() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,13 +88,13 @@ function CustomerList() {
   const isAdmin = userRole === 'admin';
 
   // --- Fungsi Utama Fetch Data ---
-  async function fetchCustomers(page, search, isMounted) { // BARU: Terima flag isMounted
+  async function fetchCustomers(page, search, isMounted) { 
     try {
       if (isMounted) setLoading(true);
       const response = await axios.get(
         `/api/customers?page=${page}&limit=${LIMIT_PER_PAGE}&search=${search}`
       );
-      if (isMounted) { // Cek sebelum set state
+      if (isMounted) { 
         setCustomers(response.data.customers);
         setTotalPages(response.data.totalPages);
         setCurrentPage(response.data.currentPage);
@@ -47,11 +110,11 @@ function CustomerList() {
 
   // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
-    let isMounted = true; // BARU: Flag untuk cleanup
-    fetchCustomers(currentPage, activeSearch, isMounted); // Kirim flag ke fungsi fetch
+    let isMounted = true; 
+    fetchCustomers(currentPage, activeSearch, isMounted); 
 
     return () => {
-      isMounted = false; // Cleanup function
+      isMounted = false; 
     };
   }, [currentPage, activeSearch]);
 
@@ -79,7 +142,7 @@ function CustomerList() {
   const handleAddClick = () => { setEditingCustomer(null); setIsFormModalOpen(true); };
   
   const handleEditClick = (customer) => { 
-    if (!isAdmin) return; // Hanya Admin
+    if (!isAdmin) return; 
     setEditingCustomer(customer); setIsFormModalOpen(true); 
   };
   
@@ -95,7 +158,7 @@ function CustomerList() {
         }
         handleCloseFormModal();
         // Trigger re-fetch
-        if (currentPage !== 1) setCurrentPage(1); // Refresh ke halaman 1 jika nambah
+        if (currentPage !== 1) setCurrentPage(1); 
         else setCurrentPage(c => c);
     } catch (err) {
         toast.error(err.response?.data?.msg || 'Gagal menyimpan pelanggan.');
@@ -103,7 +166,7 @@ function CustomerList() {
   };
   
   const handleDeleteClick = (customer) => { 
-    if (!isAdmin) return; // Hanya Admin
+    if (!isAdmin) return; 
     setCustomerToDelete(customer); setIsConfirmModalOpen(true); 
   };
   
@@ -132,6 +195,10 @@ function CustomerList() {
   const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(currentPage + 1); };
   const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(currentPage - 1); };
 
+  // --- RENDER UTAMA ---
+  if (loading) {
+    return <CustomerListSkeleton isAdmin={isAdmin} />; // Tampilkan Skeleton saat loading
+  }
 
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg relative"> 
@@ -172,8 +239,8 @@ function CustomerList() {
       </div>
 
       {/* Tabel */}
-      {loading ? (
-        <p className="text-gray-500">Memuat data...</p>
+      {(customers.length === 0 && !loading) ? (
+        <p className="text-gray-500">Tidak ada data pelanggan.</p>
       ) : (
         <>
           <div className="overflow-x-auto">
@@ -219,13 +286,6 @@ function CustomerList() {
                     </td>
                   </tr>
                 ))}
-                {customers.length === 0 && !loading && (
-                    <tr>
-                        <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
-                            Tidak ada data pelanggan.
-                        </td>
-                    </tr>
-                )}
               </tbody>
             </table>
           </div>
