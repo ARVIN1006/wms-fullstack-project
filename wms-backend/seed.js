@@ -3,11 +3,14 @@ const fs = require("fs");
 const path = require("path");
 const bcrypt = require("bcryptjs");
 
+// Jumlah transaksi yang akan dibuat
+const NUM_TRANSACTIONS = 300; 
+
 // Helper untuk mendapatkan stok saat ini (untuk perhitungan Average Cost)
 async function getCurrentStockAndCost(client, productId, locationId) {
   const result = await client.query(
-    "SELECT quantity, average_cost FROM stock_levels WHERE product_id = $1 AND location_id = $2",
-    [productId, locationId]
+    "SELECT quantity, average_cost FROM stock_levels WHERE product_id = $1 AND location_id = $2 FOR UPDATE",
+    [productId, locationId] // Menggunakan FOR UPDATE untuk locking (opsional, tapi bagus untuk seeder)
   );
   return result.rows[0] || { quantity: 0, average_cost: 0.0 };
 }
@@ -18,17 +21,13 @@ async function superSeeder() {
 
   try {
     await client.query("BEGIN");
-    console.log(
-      "Transaksi dimulai. Menghapus tabel lama (Prioritas Dependensi)..."
-    );
+    console.log("Transaksi dimulai. Menghapus tabel lama...");
 
-    // --- 1. HAPUS TABEL ANAK & TRANSAKSI (URUTAN WAJIB BENAR) ---
+    // --- 1. HAPUS TABEL (URUTAN WAJIB BENAR) ---
     await client.query("DROP TABLE IF EXISTS transaction_items CASCADE");
     await client.query("DROP TABLE IF EXISTS stock_levels CASCADE");
     await client.query("DROP TABLE IF EXISTS movements CASCADE");
     await client.query("DROP TABLE IF EXISTS transactions CASCADE");
-
-    // --- 2. HAPUS TABEL INDUK MASTER DATA & SISTEM ---
     await client.query("DROP TABLE IF EXISTS products CASCADE");
     await client.query("DROP TABLE IF EXISTS locations CASCADE");
     await client.query("DROP TABLE IF EXISTS users CASCADE");
@@ -38,7 +37,7 @@ async function superSeeder() {
     await client.query("DROP TABLE IF EXISTS stock_statuses CASCADE");
     console.log("Semua tabel lama berhasil dihapus.");
 
-    // --- 3. BUAT ULANG TABEL DARI database.sql ---
+    // --- 2. BUAT ULANG TABEL DARI database.sql ---
     console.log("Membuat ulang struktur tabel...");
     const sql = fs
       .readFileSync(path.join(__dirname, "database.sql"))
@@ -49,96 +48,128 @@ async function superSeeder() {
     // --- SEED DATA MASTER BARU ---
 
     // STATUSES & CATEGORIES
+    console.log("Membuat Status & Kategori...");
     const statusRes = await client.query(
       "INSERT INTO stock_statuses (name) VALUES ('Good'), ('Damaged'), ('Expired') RETURNING id"
     );
-    const statusGoodId = statusRes.rows[0].id; // ID 1
+    const statusGoodId = statusRes.rows[0].id;
     const statusDamagedId = statusRes.rows[1].id;
     const statusExpiredId = statusRes.rows[2].id;
 
     const categoryRes = await client.query(
-      "INSERT INTO categories (name) VALUES ('Electronics'), ('Office Supplies'), ('Consumables') RETURNING id"
+      "INSERT INTO categories (name) VALUES ('Electronics'), ('Office Supplies'), ('Tools'), ('Chemicals') RETURNING id"
     );
-    const categoryId1 = categoryRes.rows[0].id;
-    const categoryId2 = categoryRes.rows[1].id;
-    const categoryId3 = categoryRes.rows[2].id;
+    const categoryIds = categoryRes.rows.map(r => r.id);
 
     // 4. SEED USERS
-    console.log("Membuat user admin dan 2 staff...");
+    console.log("Membuat user admin, 2 staff, dan 1 supervisor...");
     const salt = await bcrypt.genSalt(10);
-    const passwordHashAdmin = await bcrypt.hash("password123", salt);
+    const passwordHash = await bcrypt.hash("password123", salt);
 
-    const adminRes = await client.query(
-      "INSERT INTO users (username, password_hash, role) VALUES ('admin', $1, 'admin') RETURNING id",
-      [passwordHashAdmin]
-    );
-    const staff1Res = await client.query(
-      "INSERT INTO users (username, password_hash, role) VALUES ('staff1', $1, 'staff') RETURNING id",
-      [passwordHashAdmin]
-    );
-    const staff2Res = await client.query(
-      "INSERT INTO users (username, password_hash, role) VALUES ('staff2', $1, 'staff') RETURNING id",
-      [passwordHashAdmin]
-    );
-
-    const adminUserId = adminRes.rows[0].id;
-    const staffUserId1 = staff1Res.rows[0].id;
-    const staffUserId2 = staff2Res.rows[0].id;
-    console.log("User admin dan 2 staff dibuat.");
+    const usersData = [
+        { username: 'admin', role: 'admin' },
+        { username: 'staff1', role: 'staff' },
+        { username: 'staff2', role: 'staff' },
+        { username: 'supervisor', role: 'admin' },
+    ];
+    
+    const userIds = [];
+    for (const u of usersData) {
+        const res = await client.query(
+            "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id",
+            [u.username, passwordHash, u.role]
+        );
+        userIds.push(res.rows[0].id);
+    }
+    const [adminUserId, staffUserId1, staffUserId2, supervisorUserId] = userIds;
+    const operators = userIds; 
 
     // 5. LOCATIONS, SUPPLIERS, CUSTOMERS
-    console.log("Membuat lokasi dummy...");
+    console.log("Membuat 5 lokasi, 4 supplier, dan 4 customer...");
     const locRes = await client.query(
-      "INSERT INTO locations (name, description, max_capacity_m3) VALUES ($1, $2, $3), ($4, $5, $6), ($7, $8, $9) RETURNING id",
+      "INSERT INTO locations (name, description, max_capacity_m3) VALUES ($1, $2, $3), ($4, $5, $6), ($7, $8, $9), ($10, $11, $12), ($13, $14, $15) RETURNING id",
       [
-        "RAK A1 (Elektronik)", "Lokasi barang fast-moving", 50.0,
-        "RAK B2 (Kantor)", "Lokasi barang slow-moving", 100.0,
-        "QA AREA", "Area Karantina", 20.0,
+        "RAK A1 (Fast)", "Lokasi barang fast-moving", 100.0,
+        "RAK B2 (Slow)", "Lokasi barang slow-moving", 200.0,
+        "QA AREA", "Area Karantina/Pengecekan", 50.0,
+        "LOADING DOCK", "Area Transit Masuk", 30.0,
+        "RAK C3 (Tools)", "Lokasi alat berat/tools", 150.0,
       ]
     );
-    const locIdA1 = locRes.rows[0].id;
-    const locIdB2 = locRes.rows[1].id;
-    const locIdQA = locRes.rows[2].id;
+    const locIds = locRes.rows.map(r => r.id);
+    const [locIdA1, locIdB2, locIdQA, locIdDock, locIdC3] = locIds;
 
     const supplierRes = await client.query(
-      "INSERT INTO suppliers (name) VALUES ('PT. Supplier Emas'), ('CV. Distributor Cepat'), ('Toko Lokal Murah') RETURNING id"
+      "INSERT INTO suppliers (name) VALUES ('PT. Electronic Global'), ('CV. Office Supplies'), ('Toko Tools Makmur'), ('PT. Kimia Jaya') RETURNING id"
     );
     const customerRes = await client.query(
-      "INSERT INTO customers (name) VALUES ('Toko Jaya Abadi'), ('Pelanggan Online'), ('CV. Ritel Besar') RETURNING id"
+      "INSERT INTO customers (name) VALUES ('Toko Jaya Abadi'), ('Pelanggan Online Super'), ('CV. Ritel Besar'), ('Proyek Konstruksi Mega') RETURNING id"
     );
-    const supplierId1 = supplierRes.rows[0].id;
-    const supplierId2 = supplierRes.rows[1].id;
-    const customerId1 = customerRes.rows[0].id;
-    const customerId2 = customerRes.rows[1].id;
+    const supplierIds = supplierRes.rows.map(r => r.id);
+    const customerIds = customerRes.rows.map(r => r.id);
 
-    // 6. PRODUCTS (50 Produk)
-    console.log("Membuat 50 produk...");
-    const productIds = [];
-    for (let i = 1; i <= 50; i++) {
-      const isElectronic = i <= 25;
-      const sku = isElectronic
-        ? `ELEC-${i.toString().padStart(3, "0")}`
-        : `OFFICE-${(i - 25).toString().padStart(3, "0")}`;
-      
-      const name = isElectronic
-        ? `Headset Gaming V${i}`
-        : `Kertas A4 HVS ${i - 25} rim`;
+    // 6. PRODUCTS (60 Produk)
+    console.log("Membuat 60 produk terperinci...");
+    const productsData = [];
+    for (let i = 1; i <= 60; i++) {
+        let catIndex = i % 4; // 0, 1, 2, 3
+        const catId = categoryIds[catIndex];
+        const supplierId = supplierIds[catIndex];
+        
+        let sku, name, unit, price, volume;
 
-      const price = 100000 + i * 1000;
-      const selling = price * 1.5;
-      const catId = isElectronic ? categoryId1 : categoryId2;
-      const suppId = i % 2 === 0 ? supplierId1 : supplierId2;
-      const volume = isElectronic ? 0.05 : 0.02;
-
-      const res = await client.query(
-        "INSERT INTO products (sku, name, unit, category_id, purchase_price, selling_price, main_supplier_id, volume_m3) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
-        [sku, name, "pcs", catId, price, selling, suppId, volume]
-      );
-      productIds.push({ id: res.rows[0].id, initial_price: price, selling_price: selling, volume_m3: volume });
+        if (catIndex === 0) { // Electronics
+            sku = `ELEC-${i.toString().padStart(3, "0")}`;
+            name = `Headset Gaming Pro V${i}`;
+            unit = "pcs";
+            price = 100000 + i * 5000;
+            volume = 0.05;
+        } else if (catIndex === 1) { // Office Supplies
+            sku = `OFF-${i.toString().padStart(3, "0")}`;
+            name = `Kertas A4 Premium ${i}gsm`;
+            unit = "rim";
+            price = 35000 + i * 50;
+            volume = 0.01;
+        } else if (catIndex === 2) { // Tools
+            sku = `TOOL-${i.toString().padStart(3, "0")}`;
+            name = `Kunci Pas Set Heavy Duty ${i}`;
+            unit = "set";
+            price = 500000 + i * 10000;
+            volume = 0.15;
+        } else { // Chemicals
+            sku = `CHEM-${i.toString().padStart(3, "0")}`;
+            name = `Cleaner Multi Purpose 5L Batch ${i}`;
+            unit = "botol";
+            price = 75000 + i * 200;
+            volume = 0.02;
+        }
+        
+        productsData.push({
+            sku, name, unit, 
+            category_id: catId, 
+            purchase_price: price, 
+            selling_price: price * 1.4,
+            main_supplier_id: supplierId,
+            volume_m3: volume
+        });
     }
 
-    // --- SEED TRANSACTIONS (100+ TRANSAKSI ACER) ---
-    console.log("Memproses 100+ transaksi acak...");
+    const productIds = [];
+    for (const p of productsData) {
+        const res = await client.query(
+            "INSERT INTO products (sku, name, unit, category_id, purchase_price, selling_price, main_supplier_id, volume_m3) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, purchase_price, selling_price",
+            [p.sku, p.name, p.unit, p.category_id, p.purchase_price, p.selling_price, p.main_supplier_id, p.volume_m3]
+        );
+        productIds.push({ 
+            id: res.rows[0].id, 
+            initial_price: res.rows[0].purchase_price, 
+            selling_price: res.rows[0].selling_price
+        });
+    }
+
+
+    // --- SEED TRANSACTIONS (300 Transaksi) ---
+    console.log(`Memproses ${NUM_TRANSACTIONS} transaksi kompleks...`);
 
     const generateRandomDate = (daysAgo) => {
       const date = new Date();
@@ -146,45 +177,59 @@ async function superSeeder() {
       return date;
     };
 
-    const operators = [adminUserId, staffUserId1, staffUserId2];
-    const customerList = [customerId1, customerId2];
-    const supplierList = [supplierId1, supplierId2];
-
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < NUM_TRANSACTIONS; i++) {
       const type = Math.random() < 0.6 ? "IN" : "OUT";
-      const daysAgo = Math.floor(Math.random() * 60) + 1;
+      const daysAgo = Math.floor(Math.random() * 365) + 1; // Data hingga 1 tahun ke belakang
       const date = generateRandomDate(daysAgo);
-      const durationMin = Math.floor(Math.random() * 10) + 2;
-      const operatorId = operators[Math.floor(Math.random() * 3)];
-      const locationId = i % 2 === 0 ? locIdA1 : locIdB2;
+      const durationMin = Math.floor(Math.random() * 15) + 5;
+      const operatorId = operators[Math.floor(Math.random() * operators.length)];
       
-      const productIndex = Math.floor(Math.random() * 20); // Hanya gunakan 20 produk pertama
+      const productIndex = Math.floor(Math.random() * productIds.length); 
       const product = productIds[productIndex]; 
       const productId = product.id;
       
-      const qty = Math.floor(Math.random() * 15) + 1;
-      const transactionPrice = product.initial_price + Math.floor(Math.random() * 5000); // Variasi harga
-      const transactionSellingPrice = product.selling_price;
+      const qty = Math.floor(Math.random() * 50) + 1;
       
-      const supplierId = type === "IN" ? supplierList[Math.floor(Math.random() * 2)] : null;
-      const customerId = type === "OUT" ? customerList[Math.floor(Math.random() * 2)] : null;
-      const stockStatus = Math.random() < 0.05 ? statusDamagedId : statusGoodId;
+      let locationId, supplierId, customerId, stockStatus, batchNumber, expiryDate;
+      
+      // Tentukan lokasi berdasarkan tipe produk
+      const isElectronic = productIndex < 15; // Contoh logika penentuan lokasi
+      locationId = isElectronic ? locIdA1 : locIdB2;
 
-      // Ambil stok dan average cost saat ini
+      // Tentukan pihak
+      supplierId = type === "IN" ? supplierIds[Math.floor(Math.random() * supplierIds.length)] : null;
+      customerId = type === "OUT" ? customerIds[Math.floor(Math.random() * customerIds.length)] : null;
+      
+      // Tentukan status stok (10% Damaged, 5% Expired saat IN)
+      stockStatus = statusGoodId;
+      if (type === "IN" && Math.random() < 0.10) {
+          stockStatus = Math.random() < 0.5 ? statusDamagedId : statusExpiredId;
+      }
+      
+      // Batch dan Expiry Date
+      if (stockStatus === statusExpiredId) {
+           expiryDate = generateRandomDate(Math.floor(Math.random() * 60)); // Kadaluarsa dalam 60 hari
+      } else if (stockStatus === statusGoodId && productIndex % 10 === 0) {
+           batchNumber = `BATCH-${Math.floor(Math.random() * 999)}`;
+      }
+
+      // --- LOGIKA AVERAGE COST DAN STOCK CHECK ---
+      
       const currentStock = await getCurrentStockAndCost(client, productId, locationId);
       const oldQty = parseFloat(currentStock.quantity);
       const oldAvgCost = parseFloat(currentStock.average_cost);
 
       let qtyChange = type === "IN" ? qty : -qty;
-      let purchasePriceAtTrans = 0;
+      let purchasePriceAtTrans = oldAvgCost; 
+      let transactionPrice = product.initial_price * (1 + (Math.random() * 0.1 - 0.05)); // Harga Beli +- 5%
       let newAvgCost = oldAvgCost; 
-
+      
+      // Hanya izinkan OUT jika stok cukup
       if (type === "OUT") {
-        // Cek stok sebelum OUT
         if (oldQty < qty) {
           continue; // Lewati transaksi jika stok tidak cukup
         }
-        purchasePriceAtTrans = oldAvgCost; // HPP saat keluar adalah Average Cost
+        purchasePriceAtTrans = oldAvgCost; // COGS saat keluar adalah Average Cost
         
       } else if (type === "IN") {
         purchasePriceAtTrans = transactionPrice; // HPP transaksi masuk adalah harga beli
@@ -214,72 +259,80 @@ async function superSeeder() {
 
       // 8. Catat Item
       await client.query(
-        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, purchase_price_at_trans, selling_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date, purchase_price_at_trans, selling_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         [
           transId,
           productId,
           locationId,
           qty,
           stockStatus,
-          purchasePriceAtTrans, // Gunakan HPP yang sudah dihitung (Avg Cost atau Harga Beli Masuk)
-          transactionSellingPrice,
+          batchNumber || null,
+          expiryDate || null,
+          purchasePriceAtTrans, 
+          product.selling_price * (type === 'OUT' ? 1 : 0.9), // Harga jual acak, atau 0.9x jika IN
         ]
       );
 
       // 9. Update Stock Levels (Termasuk Average Cost)
+      // Gunakan UPDATE/INSERT (UPSERT)
       await client.query(
         `
             INSERT INTO stock_levels (product_id, location_id, quantity, average_cost) 
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (product_id, location_id) 
             DO UPDATE SET 
-                quantity = stock_levels.quantity + $3,
+                quantity = stock_levels.quantity + EXCLUDED.quantity,
                 average_cost = $4
         `,
-        [productId, locationId, qtyChange, newAvgCost] // $3 = qtyChange, $4 = newAvgCost
+        [productId, locationId, qtyChange, newAvgCost] 
       );
     }
 
-    // 10. SEED MOVEMENT (5 Perpindahan)
-    console.log("Membuat 5 perpindahan barang...");
-    const firstProduct = productIds[0];
-    const moveQty = 5;
-    
-    // Ambil stok A1 sebelum move
-    const stockA1 = await getCurrentStockAndCost(client, firstProduct.id, locIdA1);
-    
-    await client.query(
-      "INSERT INTO movements (product_id, from_location_id, to_location_id, quantity, reason, operator_id) VALUES ($1, $2, $3, $4, $5, $6)",
-      [
-        firstProduct.id,
-        locIdA1,
-        locIdQA,
-        moveQty,
-        "QA/Pengecekan Kualitas",
-        adminUserId,
-      ]
-    );
+    // 10. SEED MOVEMENT (15 Perpindahan)
+    console.log("Membuat 15 perpindahan barang untuk data pergerakan...");
+    for (let j = 0; j < 15; j++) {
+        const product = productIds[Math.floor(Math.random() * productIds.length)];
+        const fromLoc = locIdA1; // Pindahkan dari A1
+        const toLoc = locIdQA;  // Pindahkan ke QA
+        const moveQty = 5;
+        const operatorId = operators[Math.floor(Math.random() * operators.length)];
+        
+        const stockA1 = await getCurrentStockAndCost(client, product.id, fromLoc);
+        if (stockA1.quantity < moveQty) continue;
 
-    // Update stok A1 (Kurangi)
-    await client.query(
-      "UPDATE stock_levels SET quantity = quantity - $1 WHERE product_id = $2 AND location_id = $3",
-      [moveQty, firstProduct.id, locIdA1]
-    );
+        await client.query(
+            "INSERT INTO movements (product_id, from_location_id, to_location_id, quantity, reason, operator_id, date) VALUES ($1, $2, $3, $4, $5, $6, NOW())",
+            [
+                product.id,
+                fromLoc,
+                toLoc,
+                moveQty,
+                j % 3 === 0 ? "QA Check" : "Relokasi Gudang",
+                operatorId,
+            ]
+        );
 
-    // Update stok QA AREA (Tambah dengan Average Cost yang sama)
-    await client.query(
-      `
-      INSERT INTO stock_levels (product_id, location_id, quantity, average_cost) 
-      VALUES ($1, $2, $3, $4) 
-      ON CONFLICT (product_id, location_id) 
-      DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity, average_cost = $4
-      `,
-      [firstProduct.id, locIdQA, moveQty, stockA1.average_cost]
-    );
+        // Update stok (Kurangi di Asal)
+        await client.query(
+            "UPDATE stock_levels SET quantity = quantity - $1 WHERE product_id = $2 AND location_id = $3",
+            [moveQty, product.id, fromLoc]
+        );
+
+        // Update stok (Tambah di Tujuan, HPP tetap sama)
+        await client.query(
+            `
+            INSERT INTO stock_levels (product_id, location_id, quantity, average_cost) 
+            VALUES ($1, $2, $3, $4) 
+            ON CONFLICT (product_id, location_id) 
+            DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity, average_cost = $4
+            `,
+            [product.id, toLoc, moveQty, stockA1.average_cost]
+        );
+    }
 
     // 11. SELESAI
     await client.query("COMMIT");
-    console.log("✅ SUPER SEED BERHASIL! DB siap untuk pengujian Average Cost.");
+    console.log("✅ SUPER SEED BERHASIL! DB siap untuk pengujian Average Cost dan Laporan.");
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("❌ SUPER SEED GAGAL:", err.message);

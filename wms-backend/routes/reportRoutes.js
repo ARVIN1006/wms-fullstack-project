@@ -499,29 +499,76 @@ router.get("/movements/export-all", async (req, res) => {
 });
 
 // ====================================================
-// 4. LAPORAN KINERJA GUDANG
+// 4. LAPORAN KINERJA GUDANG (FIXED: Per Operator)
 // ====================================================
 router.get("/performance", async (req, res) => {
   try {
-    const query = `
+    // FIX: Menggunakan period dan tanggal filter
+    const { period = 'all', startDate, endDate } = req.query; 
+    
+    let start, end;
+    
+    // Logic to determine date range based on period
+    if (period && period !== 'all') {
+        const days = parseInt(period.replace('last', ''));
+        end = new Date();
+        start = new Date();
+        start.setDate(start.getDate() - days);
+    } else {
+        start = startDate ? new Date(startDate) : null;
+        end = endDate ? new Date(endDate) : null;
+    }
+
+    if (!validateDateRange(start, end, res)) return;
+
+    let params = [];
+    let whereClauses = [];
+    let i = 0;
+
+    if (start) {
+      i++;
+      whereClauses.push(`t.date >= $${i}`);
+      params.push(start);
+    }
+    if (end) {
+      i++;
+      end.setDate(end.getDate() + 1);
+      whereClauses.push(`t.date < $${i}`);
+      params.push(end);
+    }
+
+    // Hanya filter pada transactions
+    const whereStr = whereClauses.length > 0 ? ` AND ${whereClauses.join(" AND ")}` : "";
+
+    // FIX UTAMA: Query yang benar untuk Laporan Kinerja Per Operator
+    const performanceQuery = `
       SELECT 
-        type,
-        AVG(EXTRACT(EPOCH FROM (process_end - process_start))) AS avg_duration_seconds
-      FROM transactions
-      WHERE process_start IS NOT NULL AND process_end IS NOT NULL
-      GROUP BY type
-      ORDER BY type;
+        u.username AS operator_name,
+        COUNT(DISTINCT t.id) AS total_transactions,
+        -- Total units managed (only transactions are counted for units)
+        COALESCE(SUM(ti.quantity), 0) AS total_units, 
+
+        -- Calculate average process time for IN transactions
+        AVG(CASE WHEN t.type = 'IN' THEN EXTRACT(EPOCH FROM (t.process_end - t.process_start)) END) / 60 AS avg_inbound_time,
+        
+        -- Calculate average process time for OUT transactions
+        AVG(CASE WHEN t.type = 'OUT' THEN EXTRACT(EPOCH FROM (t.process_end - t.process_start)) END) / 60 AS avg_outbound_time,
+
+        -- Calculate total gross profit for OUT transactions
+        COALESCE(SUM(CASE WHEN t.type = 'OUT' THEN ti.quantity * (COALESCE(ti.selling_price_at_trans, 0) - COALESCE(ti.purchase_price_at_trans, 0)) ELSE 0 END), 0) AS total_gross_profit
+
+      FROM users u
+      INNER JOIN transactions t ON u.id = t.operator_id
+      LEFT JOIN transaction_items ti ON t.id = ti.transaction_id
+      WHERE t.operator_id IS NOT NULL ${whereStr}
+      GROUP BY u.username
+      ORDER BY total_transactions DESC;
     `;
+    
+    const result = await db.query(performanceQuery, params);
 
-    const result = await db.query(query);
-    const formatted = result.rows.map((r) => ({
-      type: r.type,
-      avg_duration_minutes: (
-        parseFloat(r.avg_duration_seconds || 0) / 60
-      ).toFixed(2),
-    }));
-
-    res.json(formatted);
+    // Frontend expects 'reports' array
+    res.json({ reports: result.rows });
   } catch (err) {
     console.error("ERROR IN /performance:", err.message);
     res.status(500).send("Server Error saat mengambil laporan kinerja.");
@@ -533,54 +580,85 @@ router.get("/performance", async (req, res) => {
 // ====================================================
 router.get("/activity", async (req, res) => {
   try {
-    const { startDate, endDate, operatorId } = req.query;
+    const { period = 'all', startDate, endDate, operatorId } = req.query;
 
-    const queryParams = [
-      startDate || "1970-01-01",
-      endDate
-        ? new Date(new Date(endDate).setDate(new Date(endDate).getDate() + 1))
-        : "9999-12-31",
-      operatorId || null,
-    ];
+    let start, end;
+    
+    if (period && period !== 'all') {
+        const days = parseInt(period.replace('last', ''));
+        end = new Date();
+        start = new Date();
+        start.setDate(start.getDate() - days);
+    } else {
+        start = startDate ? new Date(startDate) : null;
+        end = endDate ? new Date(endDate) : null;
+    }
 
-    const userWhere = operatorId ? `AND u.id = $3` : "";
+    if (!validateDateRange(start, end, res)) return;
+
+    let params = [];
+    let i = 0;
+    let dateWhere = [];
+    let operatorWhere = "";
+
+    if (start) {
+      i++;
+      dateWhere.push(`date >= $${i}`);
+      params.push(start);
+    }
+    if (end) {
+      i++;
+      end.setDate(end.getDate() + 1);
+      dateWhere.push(`date < $${i}`);
+      params.push(end);
+    }
+
+    const dateStr = dateWhere.length > 0 ? ` AND ${dateWhere.join(" AND ")}` : "";
+    
+    if (operatorId) {
+        i++;
+        operatorWhere = ` AND u.id = $${i}`;
+        params.push(operatorId);
+    }
 
     const query = `
-      WITH UserActivities AS (
-        SELECT operator_id, 
-          CASE WHEN type = 'IN' THEN 'Inbound' 
-               WHEN type = 'OUT' THEN 'Outbound' 
-               ELSE 'Transaction' END AS activity_type
-        FROM transactions
-        WHERE (date >= $1::date AND date < $2::date)
-          AND ($3::int IS NULL OR operator_id = $3::int)
-        UNION ALL
-        SELECT operator_id, 'Movement' AS activity_type
-        FROM movements
-        WHERE (date >= $1::date AND date < $2::date)
-          AND ($3::int IS NULL OR operator_id = $3::int)
+      WITH Activities AS (
+          SELECT 
+              operator_id, 
+              type,
+              CASE WHEN type = 'IN' THEN ti.quantity
+                   WHEN type = 'OUT' THEN ti.quantity
+                   ELSE 0 END AS unit_quantity
+          FROM transactions t
+          JOIN transaction_items ti ON t.id = ti.transaction_id
+          WHERE t.operator_id IS NOT NULL ${dateStr}
+          
+          UNION ALL
+          
+          SELECT 
+              operator_id,
+              'MOVEMENT' as type,
+              quantity as unit_quantity
+          FROM movements m
+          WHERE m.operator_id IS NOT NULL ${dateStr}
       )
       SELECT
-        u.id AS operator_id,
         u.username AS operator_name,
         u.role,
         COUNT(a.operator_id) AS total_activities,
-        COUNT(CASE WHEN a.activity_type = 'Inbound' THEN 1 END) AS total_inbound,
-        COUNT(CASE WHEN a.activity_type = 'Outbound' THEN 1 END) AS total_outbound,
-        COUNT(CASE WHEN a.activity_type = 'Movement' THEN 1 END) AS total_movements
+        COALESCE(SUM(CASE WHEN a.type = 'IN' THEN a.unit_quantity ELSE 0 END), 0) AS total_units_in,
+        COALESCE(SUM(CASE WHEN a.type = 'OUT' THEN a.unit_quantity ELSE 0 END), 0) AS total_units_out,
+        COALESCE(SUM(CASE WHEN a.type = 'MOVEMENT' THEN 1 ELSE 0 END), 0) AS total_movements
       FROM users u
-      -- PERBAIKAN: Ganti LEFT JOIN menjadi INNER JOIN
-      -- Ini memastikan bahwa jika UserActivities kosong (karena filter tanggal), 
-      -- tidak ada user yang akan ditampilkan.
-      INNER JOIN UserActivities a ON u.id = a.operator_id 
+      INNER JOIN Activities a ON u.id = a.operator_id 
       WHERE u.role IN ('admin', 'staff')
-      ${userWhere}
+      ${operatorWhere}
       GROUP BY u.id, u.username, u.role
       ORDER BY total_activities DESC;
     `;
 
-    const result = await db.query(query, queryParams);
-    res.json(result.rows);
+    const result = await db.query(query, params);
+    res.json({ reports: result.rows });
   } catch (err) {
     console.error("ERROR IN /activity:", err.message);
     res.status(500).send("Server Error saat mengambil laporan aktivitas user.");
@@ -588,15 +666,14 @@ router.get("/activity", async (req, res) => {
 });
 
 // ====================================================
-// 6. LAPORAN CUSTOMER & ORDER (FIXED: PERHITUNGAN GROSS PROFIT)
+// 6. LAPORAN CUSTOMER & ORDER (FIXED: PROFIT & FILTER TANGGAL)
 // ====================================================
 router.get("/customer-order", async (req, res) => {
   try {
-    const { period, startDate, endDate } = req.query;
+    const { period = 'all', startDate, endDate } = req.query;
 
     let start, end;
     
-    // Tentukan range berdasarkan periode atau input manual
     if (period && period !== 'all') {
         const days = parseInt(period.replace('last', ''));
         end = new Date();
@@ -632,9 +709,9 @@ router.get("/customer-order", async (req, res) => {
         c.id AS customer_id,
         c.name AS customer_name,
         COUNT(DISTINCT t.id) AS total_orders, 
-        COALESCE(SUM(ti.quantity), 0) AS total_units_out, -- FIX: Tambahkan total units out
+        COALESCE(SUM(ti.quantity), 0) AS total_units_out,
         
-        -- FIX UTAMA: Perhitungan Revenue, COGS, dan Profit
+        -- Perhitungan Revenue, COGS, dan Profit
         COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS total_sales_revenue,
         COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS total_cogs,
         COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) -
@@ -643,14 +720,12 @@ router.get("/customer-order", async (req, res) => {
       FROM customers c
       INNER JOIN transactions t ON c.id = t.customer_id AND t.type = 'OUT'
       LEFT JOIN transaction_items ti ON t.id = ti.transaction_id
-      LEFT JOIN products p ON ti.product_id = p.id
       WHERE t.type = 'OUT' ${whereStr}
       GROUP BY c.id, c.name
       ORDER BY gross_profit DESC;
     `;
     const summary = await db.query(summaryQuery, params);
 
-    // Query Top Product (Menggunakan whereStr)
     const topProductQuery = `
       SELECT
         p.sku,
@@ -677,11 +752,15 @@ router.get("/customer-order", async (req, res) => {
 });
 
 // ====================================================
-// 7. LAPORAN KEUANGAN - VALUASI STOK DIPERBAIKI
+// 7. LAPORAN KEUANGAN - VALUASI STOK DIPERBAIKI (FINAL FIX)
 // ====================================================
 router.get("/financial", async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, summaryPage = 1, summaryLimit = 10 } = req.query; // BARU: Terima pagination params
+
+    const parsedLimit = parseInt(summaryLimit, 10);
+    const parsedPage = parseInt(summaryPage, 10);
+    const offset = (parsedPage - 1) * parsedLimit;
 
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
@@ -704,8 +783,8 @@ router.get("/financial", async (req, res) => {
     }
 
     const whereStr = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
-
-    // VALUASI STOK MENGGUNAKAN AVERAGE_COST DARI STOCK_LEVELS
+    
+    // 1. QUERY: TOTAL VALUASI STOK GUDANG (Kartu atas - NON PAGINATED)
     const stockValue = await db.query(`
       SELECT 
         COALESCE(SUM(s.quantity * s.average_cost), 0) AS total_asset_value,
@@ -713,7 +792,7 @@ router.get("/financial", async (req, res) => {
       FROM stock_levels s;
     `);
 
-    // PERHITUNGAN PROFIT MENGGUNAKAN PURCHASE_PRICE_AT_TRANS (yang kini berisi Average Cost)
+    // 2. QUERY: PROFIT & REVENUE (Berdasarkan transaksi OUT, filter tanggal)
     const profit = await db.query(
       `
       SELECT 
@@ -724,48 +803,55 @@ router.get("/financial", async (req, res) => {
       FROM transactions t
       JOIN transaction_items ti ON t.id = ti.transaction_id
       JOIN products p ON ti.product_id = p.id
-      ${whereStr} AND t.type = 'OUT';
+      ${whereStr} AND t.type = 'OUT'
       `,
       params
     );
 
-    const productProfit = await db.query(
-      `
+    // 3A. HITUNG TOTAL COUNT untuk Pagination Summary
+    const productValuationCountQuery = `
+      SELECT COUNT(p.id)
+      FROM products p
+      INNER JOIN stock_levels sl ON p.id = sl.product_id
+      HAVING COALESCE(SUM(sl.quantity), 0) > 0;
+    `;
+    const productValuationCountResult = await db.query(productValuationCountQuery);
+    const productSummaryTotalCount = parseInt(productValuationCountResult.rows[0].count, 10);
+    const productSummaryTotalPages = Math.ceil(productSummaryTotalCount / parsedLimit);
+
+    // 3B. QUERY: RINGKASAN NILAI STOK PER PRODUK (PAGINATED VALUATION)
+    const valuationParams = [];
+    const limitIndex = valuationParams.length + 1;
+    const offsetIndex = valuationParams.length + 2;
+
+    valuationParams.push(parsedLimit);
+    valuationParams.push(offset);
+    
+    const productValuationQuery = `
       SELECT
         p.sku,
         p.name AS product_name,
-        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS product_revenue, -- PERBAIKAN COALESCE
-        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS product_cogs,     -- PERBAIKAN COALESCE
-        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - 
-        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS product_gross_profit
-      FROM transactions t
-      JOIN transaction_items ti ON t.id = ti.transaction_id
-      JOIN products p ON ti.product_id = p.id
-      ${whereStr} AND t.type = 'OUT'
-      GROUP BY p.sku, p.name 
-      ORDER BY product_gross_profit DESC;
-      `,
-      params
-    );
-
-    const monthlyTrend = await db.query(`
-      SELECT
-        DATE_TRUNC('month', t.date) AS sale_month,
-        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - -- PERBAIKAN COALESCE
-        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS monthly_profit -- PERBAIKAN COALESCE
-      FROM transactions t
-      JOIN transaction_items ti ON t.id = ti.transaction_id
-      JOIN products p ON ti.product_id = p.id
-      WHERE t.type = 'OUT'
-      GROUP BY sale_month
-      ORDER BY sale_month ASC;
-    `);
+        COALESCE(SUM(sl.quantity), 0) AS total_quantity_in_stock,
+        COALESCE(SUM(sl.quantity * sl.average_cost), 0) AS total_value_asset,
+        AVG(sl.average_cost) AS average_cost
+      FROM products p
+      INNER JOIN stock_levels sl ON p.id = sl.product_id
+      GROUP BY p.sku, p.name
+      HAVING COALESCE(SUM(sl.quantity), 0) > 0
+      ORDER BY total_value_asset DESC
+      LIMIT $1 OFFSET $2;
+    `;
+    const productValuation = await db.query(productValuationQuery, valuationParams); // Pass pagination params
 
     res.json({
       valuation: stockValue.rows[0],
       profit: profit.rows[0],
-      profitByProduct: productProfit.rows,
-      monthlyTrend: monthlyTrend.rows,
+      product_summary: productValuation.rows, 
+      productSummaryMetadata: { // BARU: Metadata Pagination
+          totalPages: productSummaryTotalPages,
+          currentPage: parsedPage,
+          totalCount: productSummaryTotalCount,
+      },
     });
   } catch (err) {
     console.error("ERROR IN /financial:", err.message);
@@ -774,74 +860,83 @@ router.get("/financial", async (req, res) => {
 });
 
 // ====================================================
-// 8. STATUS INVENTORY (FIXED)
+// 8. LAPORAN STOK BERMASALAH (Rusak/Kadaluarsa) DENGAN PAGINATION
 // ====================================================
-router.get("/status-inventory", async (req, res) => {
-  try {
-    const { startDate, endDate, statusId, locationId } = req.query; // FIX: Tambah locationId
+router.get("/inventory-status", async (req, res) => {
+    try {
+        // Terima parameter pagination: page dan limit. Default 1 dan 10.
+        const { status = 'All', page = 1, limit = 10 } = req.query; 
 
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(endDate) : null;
-    if (!validateDateRange(start, end, res)) return;
+        const parsedLimit = parseInt(limit, 10);
+        const parsedPage = parseInt(page, 10);
+        const offset = (parsedPage - 1) * parsedLimit;
 
-    let query = `
-      SELECT 
-        ti.id AS item_id,
-        t.date AS transaction_date,
-        p.sku,
-        p.name AS product_name,
-        l.name AS location_name,
-        ti.quantity,
-        ss.name AS stock_status_name,
-        ti.batch_number,
-        ti.expiry_date,
-        u.username AS operator_name
-      FROM transaction_items ti
-      JOIN transactions t ON ti.transaction_id = t.id
-      JOIN products p ON ti.product_id = p.id
-      JOIN locations l ON ti.location_id = l.id
-      JOIN stock_statuses ss ON ti.stock_status_id = ss.id
-      LEFT JOIN users u ON t.operator_id = u.id
-    `;
+        let condition = ["sl.quantity > 0"]; // Hanya tampilkan yang masih ada stok
+        let params = [];
+        let i = 0;
 
-    let where = ["ss.name != 'Good'"];
-    let params = [];
-    let i = 0;
+        // Filter: 'Expired' (exp_date < hari ini)
+        if (status === 'Expired') {
+            i++;
+            // $1
+            condition.push(`p.exp_date < $${i}`);
+            params.push(new Date());
+        }
+        
+        // Catatan: Logika untuk status 'Damaged' memerlukan tabel terpisah/pergerakan. 
+        // Untuk saat ini, hanya 'Expired' yang difilter di sisi database (exp_date).
 
-    if (start) {
-      i++;
-      where.push(`t.date >= $${i}`);
-      params.push(start);
+        const whereStr = condition.length > 0 ? ` WHERE ${condition.join(" AND ")}` : "";
+
+        // 1. HITUNG TOTAL COUNT untuk Pagination
+        const countQuery = `
+            SELECT COUNT(p.id)
+            FROM products p
+            INNER JOIN stock_levels sl ON p.id = sl.product_id
+            ${whereStr};
+        `;
+        const countResult = await db.query(countQuery, params);
+        const totalCount = parseInt(countResult.rows[0].count, 10);
+        const totalPages = Math.ceil(totalCount / parsedLimit);
+
+        // 2. QUERY: Data Stok Bermasalah (PAGINATED)
+        const dataParams = [...params];
+        dataParams.push(parsedLimit);
+        dataParams.push(offset);
+        
+        // Tentukan index untuk LIMIT dan OFFSET
+        const limitIndex = params.length + 1;
+        const offsetIndex = params.length + 2;
+
+        const dataQuery = `
+            SELECT
+                p.sku,
+                p.name AS product_name,
+                p.unit_of_measure,
+                p.exp_date,
+                sl.quantity AS stock_quantity,
+                l.name AS location_name
+            FROM products p
+            INNER JOIN stock_levels sl ON p.id = sl.product_id
+            INNER JOIN locations l ON sl.location_id = l.id
+            ${whereStr}
+            ORDER BY p.exp_date ASC, p.name ASC
+            LIMIT $${limitIndex} OFFSET $${offsetIndex};
+        `;
+        
+        const reportData = await db.query(dataQuery, dataParams); 
+
+        res.json({
+            report: reportData.rows,
+            metadata: { 
+                totalPages: totalPages,
+                currentPage: parsedPage,
+                totalCount: totalCount,
+            },
+        });
+    } catch (err) {
+        console.error("ERROR IN /inventory-status:", err.message);
+        res.status(500).send("Server Error saat mengambil laporan status inventaris.");
     }
-    if (end) {
-      i++;
-      end.setDate(end.getDate() + 1);
-      where.push(`t.date < $${i}`);
-      params.push(end);
-    }
-    if (statusId) {
-      i++;
-      where.push(`ti.stock_status_id = $${i}`);
-      params.push(statusId);
-    }
-    if (locationId) { // FIX: Tambahkan filter lokasi
-      i++;
-      where.push(`l.id = $${i}`);
-      params.push(locationId);
-    }
-
-    query += ` WHERE ${where.join(" AND ")}`;
-    query += ` ORDER BY t.date DESC;`;
-
-    const result = await db.query(query, params);
-    res.json({ reports: result.rows });
-  } catch (err) {
-    console.error("ERROR IN /status-inventory:", err.message);
-    res
-      .status(500)
-      .send("Server Error saat mengambil laporan status inventaris.");
-  }
 });
-
-
 module.exports = router;

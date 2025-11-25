@@ -10,6 +10,8 @@ const formatCurrency = (amount) => {
     })}`;
 };
 
+const PRODUCT_SUMMARY_LIMIT = 10; 
+
 // --- KOMPONEN SKELETON BARU ---
 const FinancialReportSkeleton = () => {
     return (
@@ -56,17 +58,28 @@ function FinancialReport() {
     const [loading, setLoading] = useState(true);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    
+    // BARU: State Pagination untuk Product Summary
+    const [summaryPage, setSummaryPage] = useState(1);
+    const [summaryTotalPages, setSummaryTotalPages] = useState(1);
 
-    const fetchReport = async (isMounted, start, end) => {
+    // Fungsi utama fetch laporan
+    const fetchReport = async (isMounted, start, end, page) => { 
         try {
             if (isMounted) setLoading(true);
             const params = { 
                 startDate: start || undefined, 
-                endDate: end || undefined 
+                endDate: end || undefined,
+                summaryPage: page, 
+                summaryLimit: PRODUCT_SUMMARY_LIMIT, 
             };
             const response = await axios.get('/api/reports/financial', { params });
             
-            if (isMounted) setReportData(response.data);
+            if (isMounted) {
+                setReportData(response.data);
+                setSummaryTotalPages(response.data.productSummaryMetadata.totalPages);
+                setSummaryPage(response.data.productSummaryMetadata.currentPage);
+            }
         } catch (err) {
             if (isMounted) toast.error('Gagal memuat laporan keuangan.');
         } finally {
@@ -74,16 +87,32 @@ function FinancialReport() {
         }
     };
 
+    // Efek untuk fetch awal / filter tanggal
     useEffect(() => {
         let isMounted = true;
-        fetchReport(isMounted, startDate, endDate);
+        // Fetch halaman 1 saat filter tanggal berubah
+        fetchReport(isMounted, startDate, endDate, 1); 
         return () => { isMounted = false; };
-    }, []);
+    }, [startDate, endDate]); // Dependensi filter tanggal
 
+    // Efek khusus untuk handle perpindahan halaman summary
+    useEffect(() => {
+        let isMounted = true;
+        // Fetch hanya saat summaryPage berubah (filter tanggal stabil)
+        fetchReport(isMounted, startDate, endDate, summaryPage);
+        return () => { isMounted = false; };
+    }, [summaryPage]); // Dependensi hanya pada summaryPage
+    
     const handleFilterSubmit = (e) => {
         e.preventDefault();
-        fetchReport(true, startDate, endDate);
+        setSummaryPage(1); // Reset pagination saat filter utama berubah
+        fetchReport(true, startDate, endDate, 1); // Panggil fetch ulang
     };
+
+    // Handlers Pagination
+    const handleSummaryPrev = () => { if (summaryPage > 1) setSummaryPage(summaryPage - 1); };
+    const handleSummaryNext = () => { if (summaryPage < summaryTotalPages) setSummaryPage(summaryPage + 1); };
+
 
     if (loading) {
         return <FinancialReportSkeleton />;
@@ -95,7 +124,7 @@ function FinancialReport() {
 
     // Data dari API
     const { valuation, profit, product_summary } = reportData;
-    const grossProfit = parseFloat(profit.gross_profit || 0);
+    const grossProfit = parseFloat(profit?.gross_profit || 0); // Safe check
     const isPositiveProfit = grossProfit >= 0;
 
     return (
@@ -123,10 +152,10 @@ function FinancialReport() {
                 <div className="bg-white p-6 rounded-lg shadow-xl border-l-4 border-purple-500">
                     <h2 className="text-sm font-medium text-gray-500 uppercase">Total Valuasi Aset (HPP)</h2>
                     <p className="text-3xl font-bold text-purple-600 mt-2">
-                        {formatCurrency(valuation.total_asset_value)}
+                        {formatCurrency(valuation?.total_asset_value)}
                     </p>
                     <p className="text-sm text-gray-500 mt-2">
-                        {valuation.total_units_in_stock} Unit dalam Stok
+                        {valuation?.total_units_in_stock || 0} Unit dalam Stok
                     </p>
                 </div>
 
@@ -134,7 +163,7 @@ function FinancialReport() {
                 <div className="bg-white p-6 rounded-lg shadow-xl border-l-4 border-indigo-500">
                     <h2 className="text-sm font-medium text-gray-500 uppercase">Total Pendapatan Penjualan</h2>
                     <p className="text-3xl font-bold text-indigo-600 mt-2">
-                        {formatCurrency(profit.total_sales_revenue)}
+                        {formatCurrency(profit?.total_sales_revenue)}
                     </p>
                     <p className="text-sm text-gray-500 mt-2">
                          Data berdasarkan filter periode
@@ -171,10 +200,10 @@ function FinancialReport() {
                             <tr key={index}>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{p.product_name}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{p.sku}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700">{formatCurrency(p.average_cost)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">{p.total_quantity}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700">{formatCurrency(p.average_cost)}</td> 
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">{p.total_quantity_in_stock}</td> 
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-purple-600">
-                                    {formatCurrency(p.total_value)}
+                                    {formatCurrency(p.total_value_asset)}
                                 </td>
                             </tr>
                         ))}
@@ -182,6 +211,28 @@ function FinancialReport() {
                 </table>
             </div>
             
+            {/* BARU: PAGINATION CONTROL */}
+            {summaryTotalPages > 1 && (
+                <div className="flex justify-between items-center mt-4">
+                    <button 
+                        onClick={handleSummaryPrev} 
+                        disabled={summaryPage <= 1 || loading} 
+                        className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50"
+                    >
+                        &laquo; Sebelumnya
+                    </button>
+                    <span className="text-sm">
+                        Halaman <strong>{summaryPage}</strong> dari <strong>{summaryTotalPages}</strong>
+                    </span>
+                    <button 
+                        onClick={handleSummaryNext} 
+                        disabled={summaryPage >= summaryTotalPages || loading} 
+                        className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50"
+                    >
+                        Berikutnya &raquo;
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

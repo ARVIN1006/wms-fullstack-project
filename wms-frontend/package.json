@@ -13,6 +13,7 @@
     "@hookform/resolvers": "^5.2.2",
     "axios": "^1.13.2",
     "chart.js": "^4.4.3",
+    "date-fns": "^4.1.0",
     "react": "^19.1.1",
     "react-chartjs-2": "^5.2.0",
     "react-csv": "^2.2.2",

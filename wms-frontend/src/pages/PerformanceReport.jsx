@@ -10,6 +10,9 @@ const PERIOD_OPTIONS = [
     { value: 'all', label: 'Semua Waktu' },
 ];
 
+// FIX: Set default period ke 'all' agar data muncul saat load pertama
+const DEFAULT_PERIOD = PERIOD_OPTIONS.find(o => o.value === 'all');
+
 // Helper untuk format mata uang
 const formatCurrency = (amount) => {
     return `Rp ${parseFloat(amount || 0).toLocaleString('id-ID', {
@@ -64,26 +67,27 @@ const PerformanceReportSkeleton = () => {
     );
 };
 // --- END KOMPONEN SKELETON ---
-
 function PerformanceReport() {
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [period, setPeriod] = useState(PERIOD_OPTIONS[0]);
+    // FIX: Menggunakan default 'all'
+    const [period, setPeriod] = useState(DEFAULT_PERIOD); 
 
     async function fetchReports(isMounted) {
         try {
             if (isMounted) setLoading(true);
             const params = { period: period.value };
+            // FIX: API performance sekarang mengembalikan { reports: [...] }
             const response = await axios.get('/api/reports/performance', { params });
 
             if (isMounted) {
-                setReports(response.data.reports);
+                // FIX: Memastikan mengambil reports dari object response
+                setReports(response.data.reports || []); // FIX: Safe check
             }
         } catch (err) {
             if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
                 toast.error('Gagal memuat laporan kinerja.');
             }
-            // Pastikan reports direset ke array kosong jika gagal
             if (isMounted) setReports([]); 
         } finally {
             if (isMounted) setLoading(false);
@@ -143,7 +147,6 @@ function PerformanceReport() {
                 </ExportButton>
             </div>
 
-            {/* FIX: Menerapkan check (reports || []).length di JSX */}
             {(reports || []).length === 0 ? (
                 <p className="text-gray-500">Tidak ada data kinerja operator pada periode ini.</p>
             ) : (

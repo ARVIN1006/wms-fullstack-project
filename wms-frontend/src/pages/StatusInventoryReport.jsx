@@ -3,6 +3,44 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import ExportButton from '../components/ExportButton';
 import Select from 'react-select'; 
+import { format } from "date-fns";
+const STATUS_REPORT_LIMIT = 15;
+
+// --- KOMPONEN SKELETON (Dipertahankan) ---
+const StatusInventoryReportSkeleton = () => {
+    return (
+        <div className="p-6">
+            <h1 className="text-2xl font-bold mb-4 bg-gray-200 h-8 w-1/3 animate-pulse rounded"></h1>
+            <div className="flex gap-4 items-center mb-6 p-4 border rounded-lg bg-gray-50">
+                <div className="h-6 w-1/5 bg-gray-300 rounded"></div>
+                <div className="h-10 w-1/4 bg-gray-300 rounded"></div>
+            </div>
+            <table className="min-w-full divide-y divide-gray-200 shadow-sm rounded-lg animate-pulse">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-6 py-3 bg-gray-200 h-6"></th>
+                        <th className="px-6 py-3 bg-gray-200 h-6"></th>
+                        <th className="px-6 py-3 bg-gray-200 h-6"></th>
+                        <th className="px-6 py-3 bg-gray-200 h-6"></th>
+                        <th className="px-6 py-3 bg-gray-200 h-6"></th>
+                    </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                    {[...Array(5)].map((_, i) => (
+                        <tr key={i}>
+                            <td className="px-6 py-4 whitespace-nowrap"><div className="h-4 bg-gray-200 rounded"></div></td>
+                            <td className="px-6 py-4 whitespace-nowrap"><div className="h-4 bg-gray-200 rounded"></div></td>
+                            <td className="px-6 py-4 whitespace-nowrap"><div className="h-4 bg-gray-200 rounded"></div></td>
+                            <td className="px-6 py-4 whitespace-nowrap"><div className="h-4 bg-gray-200 rounded"></div></td>
+                            <td className="px-6 py-4 whitespace-nowrap"><div className="h-4 bg-gray-200 rounded"></div></td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
 
 function StatusInventoryReport() {
   const [reports, setReports] = useState([]);
@@ -61,7 +99,7 @@ function StatusInventoryReport() {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
         if (isMounted) toast.error('Gagal memuat data laporan status.');
       }
-      if (isMounted) setReports([]); 
+      if (isMounted) setReports([]); // Pastikan reports menjadi array kosong jika gagal
     } finally {
       if (isMounted) setLoading(false);
     }
@@ -116,6 +154,41 @@ function StatusInventoryReport() {
     ...locations.map(l => ({ value: l.id, label: l.name }))
 ];
 
+  // Helper fungsi di dalam komponen yang menggunakan date-fns
+  const getStatusText = (expDate) => {
+      if (expDate) {
+          const today = new Date();
+          const expiry = new Date(expDate);
+          expiry.setHours(0,0,0,0);
+          today.setHours(0,0,0,0);
+
+          if (expiry < today) {
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">KADALUARSA</span>;
+          } else if ((expiry.getTime() - today.getTime()) / (1000 * 3600 * 24) <= 30) {
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Hampir Kadaluarsa</span>;
+          }
+      }
+      return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Normal</span>;
+  };
+  
+  const getFormattedExpDate = (expDate) => {
+      if (!expDate) return 'N/A';
+      const expiry = new Date(expDate);
+      const today = new Date();
+      expiry.setHours(0,0,0,0);
+      today.setHours(0,0,0,0);
+      
+      if (expiry < today) {
+          return <span className='font-bold text-red-600'>{format(new Date(expDate), 'dd-MM-yyyy')}</span>;
+      }
+      return format(new Date(expDate), 'dd-MM-yyyy');
+  };
+
+
+  if (loading) {
+    return <StatusInventoryReportSkeleton />;
+  }
+
   return (
     <div className="p-6 bg-white shadow-lg rounded-lg">
       <h1 className="text-2xl font-bold text-gray-800 mb-4">📦 Laporan Stok Rusak/Kadaluarsa</h1>
@@ -155,7 +228,6 @@ function StatusInventoryReport() {
                 />
             </div>
             <div>
-                {/* Tombol filter disederhanakan karena filter di-trigger oleh useEffect */}
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">
                     Tampilkan
                 </button>
@@ -174,8 +246,8 @@ function StatusInventoryReport() {
         </ExportButton>
       </div>
 
-      {loading ? (
-        <p className="text-gray-500">Memuat data...</p>
+      {(reports || []).length === 0 && !loading ? (
+        <p className='text-gray-500 mt-4'>Tidak ada data stok rusak/kadaluarsa ditemukan.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -192,20 +264,20 @@ function StatusInventoryReport() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {(reports || []).map((item) => (
-                <tr key={item.item_id}> 
+              {(reports || []).map((item, index) => (
+                <tr key={item.item_id || index}> 
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.transaction_date ? new Date(item.transaction_date).toLocaleString('id-ID') : '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.product_name} ({item.sku})</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
-                        {item.stock_status_name}
-                    </span>
+                    {/* Menggunakan helper untuk status visual */}
+                    {getStatusText(item.expiry_date)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">{item.quantity}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.location_name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.batch_number || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('id-ID') : '-'}
+                    {/* Menggunakan helper untuk format tanggal kadaluarsa */}
+                    {getFormattedExpDate(item.expiry_date)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.operator_name}</td>
                 </tr>
@@ -213,9 +285,6 @@ function StatusInventoryReport() {
             </tbody>
           </table>
         </div>
-      )}
-      {(reports || []).length === 0 && !loading && (
-          <p className='text-gray-500 mt-4'>Tidak ada data stok rusak/kadaluarsa ditemukan.</p>
       )}
     </div>
   );

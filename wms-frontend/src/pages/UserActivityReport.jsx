@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react'; 
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import ExportButton from '../components/ExportButton';
@@ -10,10 +10,54 @@ const PERIOD_OPTIONS = [
     { value: 'all', label: 'Semua Waktu' },
 ];
 
-const DEFAULT_PERIOD = PERIOD_OPTIONS.find(o => o.value === 'all'); // FIX: Default ke 'all'
+const DEFAULT_PERIOD = PERIOD_OPTIONS.find(o => o.value === 'all'); 
 
 // --- KOMPONEN SKELETON (Unchanged) ---
-const UserActivityReportSkeleton = () => { /* ... */ };
+const UserActivityReportSkeleton = () => {
+    // 5 Kolom: Operator, Total Transaksi, Total Unit IN, Total Unit OUT, Terakhir Aktif
+    const columns = 5; 
+    
+    const TableRowSkeleton = () => (
+        <tr className="border-b border-gray-200">
+            {Array.from({ length: columns }).map((_, i) => (
+                <td key={i} className="px-6 py-4">
+                    <div className={`h-4 bg-gray-300 rounded skeleton-shimmer ${i === 0 ? 'w-1/2' : 'w-1/3'}`}></div>
+                </td>
+            ))}
+        </tr>
+    );
+
+    return (
+        <div className="p-6 bg-white shadow-lg rounded-lg animate-pulse"> 
+            <div className="h-8 bg-gray-300 rounded w-1/3 mb-6 skeleton-shimmer"></div>
+            
+            {/* Filter & Export Skeleton */}
+            <div className="flex justify-between items-center mb-6 p-4 border rounded-lg bg-gray-50">
+                <div className="h-10 bg-gray-300 rounded w-48 skeleton-shimmer"></div>
+                <div className="h-10 bg-indigo-300 rounded w-40 skeleton-shimmer"></div>
+            </div>
+            
+            {/* Table Skeleton */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            {Array.from({ length: columns }).map((_, i) => (
+                                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <div className="h-3 bg-gray-300 rounded w-2/3 skeleton-shimmer"></div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} />)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+// --- END KOMPONEN SKELETON ---
 
 function UserActivityReport() {
     const [reports, setReports] = useState([]);
@@ -38,8 +82,9 @@ function UserActivityReport() {
             
             const response = await axios.get('/api/reports/activity', { params });
 
+            // Pastikan API mengembalikan { reports: [...] }
             if (isMounted) {
-                setReports(response.data);
+                setReports(response.data.reports || []); // FIX: Tambahkan || [] di sini juga
             }
         } catch (err) {
             if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
@@ -73,19 +118,19 @@ function UserActivityReport() {
     }, [period, startDate, endDate, selectedOperator]); // Re-fetch saat filter berubah
 
     const csvHeaders = [
-        { label: "Operator", key: "username" },
+        { label: "Operator", key: "operator_name" },
         { label: "Role", key: "role" },
         { label: "Total Transaksi", key: "total_transactions" },
         { label: "Unit Masuk", key: "total_units_in" },
         { label: "Unit Keluar", key: "total_units_out" },
-        // { label: "Terakhir Aktif", key: "last_active_date" }, // Data ini tidak dikirim oleh API
+        { label: "Perpindahan", key: "total_movements" },
     ];
 
-    // FIX UTAMA: Mengubah getExportData menjadi ASYNC dan menggunakan useCallback
+    // FIX: Mengubah getExportData menjadi ASYNC dan menggunakan useCallback
     const getExportData = useCallback(async () => {
+        // Menggunakan (reports || []) untuk pemeriksaan keamanan
         return (reports || []).map(r => ({
             ...r,
-            // last_active_date: r.last_active_date ? new Date(r.last_active_date).toLocaleString('id-ID') : '-', // Kolom dihapus dari header
         }));
     }, [reports]); 
 
@@ -103,7 +148,6 @@ function UserActivityReport() {
 
     const handleFilterSubmit = (e) => {
         e.preventDefault();
-        // State sudah berubah melalui onChange, useEffect akan me-re-fetch
     }
     
     if (loading) {
@@ -183,15 +227,16 @@ function UserActivityReport() {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {reports.map((report, index) => (
+                            {/* FIX: Menerapkan safe check reports || [] di sini */}
+                            {(reports || []).map((report, index) => (
                                 <tr key={report.operator_id || index}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{report.operator_name}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                         <span className={getRoleBadge(report.role)}>{report.role.toUpperCase()}</span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">{report.total_activities}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{report.total_inbound || 0}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">{report.total_outbound || 0}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{report.total_units_in || 0}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">{report.total_units_out || 0}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-700">{report.total_movements || 0}</td>
                                 </tr>
                             ))}
