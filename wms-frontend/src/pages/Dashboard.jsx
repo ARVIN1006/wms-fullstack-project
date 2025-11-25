@@ -3,7 +3,9 @@ import axios from "axios";
 import { Bar } from "react-chartjs-2";
 import { toast } from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
-import { io } from "socket.io-client"; // Realtime update
+import { io } from "socket.io-client"; 
+
+const STOCK_LIMIT_PER_PAGE = 10; 
 
 // Helper untuk format mata uang
 const formatCurrency = (amount) => {
@@ -35,50 +37,81 @@ function Dashboard() {
   const [lowStockItems, setLowStockItems] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // --- STATE PAGINATION ---
+  const [stockCurrentPage, setStockCurrentPage] = useState(1);
+  const [stockTotalPages, setStockTotalPages] = useState(0);
+  const [stockTotalCount, setStockTotalCount] = useState(0);
+  
+  // --- STATE UNTUK TOTAL NILAI STOK GUDANG (HPP KESELURUHAN) ---
+  const [totalAssetValue, setTotalAssetValue] = useState(0);
 
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin";
 
-  // --- Perbaikan: Ambil semua data dashboard dengan flag isMounted ---
-  async function fetchDashboardData(isMounted) { // BARU: Terima flag isMounted
+  // --- Fungsi untuk mengambil data stok dengan pagination ---
+  async function fetchStocksData(isMounted, page) {
     try {
-      if (isMounted) setLoading(true); // Cek sebelum set loading
-      const [productRes, locationRes, stockRes, lowStockRes, activityRes] =
+        if (isMounted) {
+            const stockRes = await axios.get(
+                `/api/stocks?page=${page}&limit=${STOCK_LIMIT_PER_PAGE}`
+            );
+            setStocks(stockRes.data.stocks);
+            setStockTotalPages(stockRes.data.totalPages);
+            setStockTotalCount(stockRes.data.totalCount);
+            setStockCurrentPage(stockRes.data.currentPage);
+        }
+    } catch (err) {
+        if (isMounted) toast.error("Gagal memuat data stok.");
+    }
+  }
+
+
+  // --- Fungsi Utama Fetch Data Dashboard ---
+  async function fetchDashboardData(isMounted, page = 1) { 
+    try {
+      if (isMounted) setLoading(true); 
+      
+      const [productRes, locationRes, lowStockRes, activityRes, financialRes] = 
         await Promise.all([
           axios.get("/api/products?limit=1000"),
           axios.get("/api/locations"),
-          axios.get("/api/stocks"),
           axios.get("/api/stocks/low-stock?threshold=10"),
           axios.get("/api/reports/recent-activity"),
+          axios.get("/api/reports/financial"), 
         ]);
+        
+      // Fetch stok secara terpisah dengan pagination
+      await fetchStocksData(isMounted, page);
 
-      if (isMounted) { // Cek sebelum set state
+      if (isMounted) { 
         setStats({
           productCount: productRes.data.products.length,
           locationCount: locationRes.data.length,
         });
-        setStocks(stockRes.data);
         setLowStockItems(lowStockRes.data);
         setRecentActivity(activityRes.data);
+        // Set total asset value (HPP KESELURUHAN)
+        setTotalAssetValue(parseFloat(financialRes.data.valuation.total_asset_value || 0));
       }
     } catch (err) {
       if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error("Gagal memuat data dashboard.");
       }
     } finally {
-      if (isMounted) setLoading(false); // Cek sebelum set loading
+      if (isMounted) setLoading(false); 
     }
   }
 
   // --- Perbaikan useEffect dengan Cleanup Function ---
   useEffect(() => {
-    let isMounted = true; // BARU: Flag untuk cleanup
-    fetchDashboardData(isMounted); // Kirim flag ke fungsi fetch
+    let isMounted = true; 
+    fetchDashboardData(isMounted, stockCurrentPage); 
     
     return () => {
-      isMounted = false; // Cleanup function
+      isMounted = false;
     };
-  }, [userRole]);
+  }, [userRole, stockCurrentPage]); 
 
   // Realtime update menggunakan Socket.IO (KEEP AS IS - Cleanup socket sudah benar)
   useEffect(() => {
@@ -87,15 +120,15 @@ function Dashboard() {
     socket.on("new_activity", (data) => {
       console.log("Realtime event diterima:", data.message);
       toast.success(data.message, { icon: "⚡" });
-      fetchDashboardData(true); // muat ulang data (Asumsi aman karena toast dan re-fetch)
+      fetchDashboardData(true, stockCurrentPage); 
     });
 
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [stockCurrentPage]); 
 
-  // Data untuk grafik stok teratas
+  // Data untuk grafik stok teratas 
   const top5Stocks = stocks
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 5);
@@ -125,13 +158,21 @@ function Dashboard() {
     },
     scales: { y: { beginAtZero: true } },
   };
+  
+  // --- Handlers Pagination Stok ---
+  const handleStockPrevPage = () => {
+      if (stockCurrentPage > 1) {
+          setStockCurrentPage(stockCurrentPage - 1);
+      }
+  };
+  const handleStockNextPage = () => {
+      if (stockCurrentPage < stockTotalPages) {
+          setStockCurrentPage(stockCurrentPage + 1);
+      }
+  };
 
-  const totalStockValue = stocks.reduce(
-    (acc, item) => acc + parseFloat(item.stock_value || 0),
-    0
-  );
 
-  if (loading) {
+  if (loading && stockTotalCount === 0) { 
     return <div className="p-6">Memuat data dashboard...</div>;
   }
 
@@ -175,17 +216,15 @@ function Dashboard() {
           </p>
         </div>
 
+        {/* Total Nilai Stok (HPP) */}
         <div className="bg-white p-6 rounded-lg shadow-lg">
           <h2 className="text-sm font-medium text-gray-500 uppercase">
             {isAdmin ? "Total Nilai Stok (HPP)" : "Total Unit Gudang"}
           </h2>
           <p className="text-4xl font-bold text-green-600">
             {isAdmin
-              ? formatCurrency(totalStockValue)
-              : `${stocks.reduce(
-                  (acc, item) => acc + parseInt(item.quantity || 0),
-                  0
-                )} unit`}
+              ? formatCurrency(totalAssetValue) // MENGGUNAKAN HPP KESELURUHAN
+              : `${stockTotalCount} unit`} 
           </p>
         </div>
       </div>
@@ -245,6 +284,17 @@ function Dashboard() {
         <h2 className="text-xl font-bold text-gray-800 mb-4">
           Stok Gudang Saat Ini
         </h2>
+        
+        {/* Kontrol Pagination (di atas tabel) */}
+        {stockTotalPages > 1 && (
+            <div className="flex justify-between items-center mb-4">
+                <p className='text-sm text-gray-600'>Menampilkan {stocks.length} dari {stockTotalCount} baris stok.</p>
+                <span className="text-sm">
+                    Halaman <strong>{stockCurrentPage}</strong> dari <strong>{stockTotalPages}</strong>
+                </span>
+            </div>
+        )}
+
         <div className="overflow-x-auto max-h-96">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0">
@@ -257,7 +307,7 @@ function Dashboard() {
                 </th>
                 {isAdmin && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Harga Beli
+                    Harga Beli (Avg)
                   </th>
                 )}
                 {isAdmin && (
@@ -294,12 +344,14 @@ function Dashboard() {
                   </td>
                   {isAdmin && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700">
-                      {formatCurrency(item.purchase_price)}
+                      {/* item.purchase_price berasal dari s.average_cost */}
+                      {formatCurrency(item.purchase_price)} 
                     </td>
                   )}
                   {isAdmin && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-900">
-                      {formatCurrency(item.stock_value)}
+                      {/* item.stock_value berasal dari s.quantity * s.average_cost */}
+                      {formatCurrency(item.stock_value)} 
                     </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
@@ -313,6 +365,30 @@ function Dashboard() {
             </tbody>
           </table>
         </div>
+        
+        {/* Kontrol Pagination (di bawah tabel) */}
+        {stockTotalPages > 1 && (
+            <div className="flex justify-between items-center mt-6">
+                <button 
+                    onClick={handleStockPrevPage} 
+                    disabled={stockCurrentPage <= 1 || loading} 
+                    className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50"
+                >
+                    &laquo; Sebelumnya
+                </button>
+                <span className="text-sm">
+                    Halaman <strong>{stockCurrentPage}</strong> dari <strong>{stockTotalPages}</strong>
+                </span>
+                <button 
+                    onClick={handleStockNextPage} 
+                    disabled={stockCurrentPage >= stockTotalPages || loading} 
+                    className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50"
+                >
+                    Berikutnya &raquo;
+                </button>
+            </div>
+        )}
+
       </div>
     </div>
   );

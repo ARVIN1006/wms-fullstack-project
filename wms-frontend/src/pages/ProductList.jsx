@@ -4,11 +4,13 @@ import { toast } from 'react-hot-toast';
 import ProductForm from '../components/ProductForm';
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext'; 
+import Select from 'react-select'; // Import Select untuk filter
 
 const LIMIT_PER_PAGE = 10;
 
 function ProductList() {
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]); // BARU: State Kategori
   const [loading, setLoading] = useState(true);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -20,6 +22,7 @@ function ProductList() {
   const [totalPages, setTotalPages] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(null); // BARU: State filter kategori
 
   // Sorting
   const [sortBy, setSortBy] = useState('created_at');
@@ -32,7 +35,13 @@ function ProductList() {
   const { userRole } = useAuth(); 
   const isAdmin = userRole === 'admin';
 
-  // --- Fungsi untuk Toggle Detail Stok ---
+  // Opsi Dropdown Kategori
+  const categoryOptions = [
+    { value: '', label: 'Semua Kategori' },
+    ...categories.map(c => ({ value: c.id, label: c.name }))
+  ];
+
+  // --- Fungsi untuk Toggle Detail Stok --- (Tidak Berubah)
   const toggleStockDetail = async (productId) => {
       if (productStockDetails[productId]) {
           setProductStockDetails(prev => ({ ...prev, [productId]: null }));
@@ -49,18 +58,29 @@ function ProductList() {
   };
 
 
-  // --- useEffect: Fetch Data dengan Cleanup Function ---
+  // --- useEffect: Fetch Data Master dan Produk ---
   useEffect(() => {
-    let isMounted = true; // BARU: Flag untuk melacak status mounting
+    let isMounted = true; 
 
+    // 1. Fetch Data Master (Kategori)
+    async function fetchMasterData() {
+        try {
+            const categoryRes = await axios.get('/api/products/categories');
+            if (isMounted) setCategories(categoryRes.data);
+        } catch (err) {
+            if (isMounted) toast.error('Gagal memuat data kategori.');
+        }
+    }
+    
+    // 2. Fetch Data Produk
     async function fetchProductsData() {
       try {
         if (isMounted) setLoading(true);
         const response = await axios.get(
-          `/api/products?page=${currentPage}&limit=${LIMIT_PER_PAGE}&search=${activeSearch}&sortBy=${sortBy}&sortOrder=${sortOrder}`
+          `/api/products?page=${currentPage}&limit=${LIMIT_PER_PAGE}&search=${activeSearch}&sortBy=${sortBy}&sortOrder=${sortOrder}&categoryId=${selectedCategory?.value || ''}`
         );
 
-        if (isMounted) { // Cek isMounted sebelum set state
+        if (isMounted) { 
           setProducts(response.data.products);
           setTotalPages(response.data.totalPages);
           setCurrentPage(response.data.currentPage);
@@ -71,21 +91,22 @@ function ProductList() {
           toast.error('Gagal memuat data produk.');
         }
       } finally {
-        if (isMounted) { // Cek isMounted sebelum set state
+        if (isMounted) { 
           setLoading(false); 
         }
       }
     }
 
+    fetchMasterData(); // Jalankan fetch master
     fetchProductsData(); // Panggil fungsi internal
 
     // Cleanup function: set flag ke false saat unmount
     return () => {
       isMounted = false;
     };
-  }, [currentPage, activeSearch, sortBy, sortOrder]); 
+  }, [currentPage, activeSearch, sortBy, sortOrder, selectedCategory]); // Tambah selectedCategory sebagai dependency
 
-  // --- Handlers CRUD ---
+  // --- Handlers CRUD --- (Tidak Berubah)
   const handleCloseFormModal = () => { setIsFormModalOpen(false); setEditingProduct(null); };
   const handleAddClick = () => { setEditingProduct(null); setIsFormModalOpen(true); };
   const handleEditClick = (product) => { setIsFormModalOpen(true); setEditingProduct(product); };
@@ -139,7 +160,23 @@ function ProductList() {
     if (field !== sortBy) return null;
     return sortOrder === 'ASC' ? ' ▲' : ' ▼';
   };
-  const handleSearchSubmit = (e) => { e.preventDefault(); setCurrentPage(1); setActiveSearch(searchQuery); };
+  
+  // Handler yang Memicu Fetching Ulang
+  const handleSearchAndFilterSubmit = (e) => { 
+    if (e) e.preventDefault(); 
+    setCurrentPage(1); 
+    setActiveSearch(searchQuery); 
+    // selectedCategory sudah menjadi dependency useEffect, jadi tidak perlu panggil fetch eksplisit.
+  };
+
+  // Handler khusus untuk filter kategori
+  const handleCategoryChange = (selectedOption) => {
+      setSelectedCategory(selectedOption);
+      // Panggil submit handler agar filter aktif
+      setCurrentPage(1);
+      setActiveSearch(searchQuery); 
+  }
+  
   const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(currentPage + 1); };
   const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(currentPage - 1); };
 
@@ -150,28 +187,39 @@ function ProductList() {
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <h1 className="text-2xl font-bold text-gray-800">Manajemen Produk</h1>
         
-        <form onSubmit={handleSearchSubmit} className="flex gap-2">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari SKU atau Nama..."
-            className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-          />
-          <button type="submit" className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded">
-            Cari
-          </button>
+        <form onSubmit={handleSearchAndFilterSubmit} className="flex gap-2 w-full md:w-auto">
+            {/* Input Pencarian */}
+            <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari SKU atau Nama..."
+                className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md shadow-sm"
+            />
+            {/* Tombol Pencarian/Filter */}
+            <button type="submit" className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded">
+                Cari
+            </button>
         </form>
-        
+
         {/* Tombol Tambah (Hanya untuk Admin) */}
         {isAdmin && (
           <button onClick={handleAddClick} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded w-full md:w-auto">
             + Tambah Produk Baru
           </button>
         )}
-        
-        {/* Tombol Ekspor (Asumsi ExportButton diimpor) */}
-        {/* ... */}
+      </div>
+
+      {/* BARU: FILTER KATEGORI */}
+      <div className='mb-6 max-w-sm'>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Filter Berdasarkan Kategori</label>
+        <Select
+            options={categoryOptions}
+            value={selectedCategory}
+            onChange={handleCategoryChange}
+            placeholder="Semua Kategori"
+            isClearable={true}
+        />
       </div>
 
       {/* Tabel */}
@@ -190,13 +238,13 @@ function ProductList() {
                     Nama Produk {renderSortIcon('name')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Deskripsi
+                    Kategori
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Satuan
                   </th>
-                  <th onClick={() => handleSortClick('main_supplier_id')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
-                    Supplier Utama {renderSortIcon('main_supplier_id')}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Supplier Utama
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Harga Beli
@@ -222,7 +270,12 @@ function ProductList() {
                     <tr className={productStockDetails[product.id] ? 'bg-blue-50' : ''}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{product.sku}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">{product.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">{product.description || '-'}</td>
+                      
+                      {/* TAMPILKAN NAMA KATEGORI */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {product.category_name || '-'}
+                      </td>
+                      
                       <td className="px-6 py-4 whitespace-nowrap text-sm">{product.unit}</td>
                       
                       {/* Data SUPPLIER UTAMA */}

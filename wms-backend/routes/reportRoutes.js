@@ -228,13 +228,106 @@ router.get("/history", async (req, res) => {
 });
 
 // ====================================================
-// 3. LAPORAN PERPINDAHAN BARANG (MOVEMENT) - DITAMBAH PAGINATION
+// 2A. RUTE EXPORT HISTORY (IGNORING PAGINATION) - BARU
+// ====================================================
+router.get("/history/export-all", async (req, res) => {
+  try {
+    const {
+      type,
+      supplierId,
+      customerId,
+      startDate,
+      endDate,
+    } = req.query;
+
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    if (!validateDateRange(start, end, res)) return;
+
+    let queryParams = [];
+    let whereClauses = [];
+    let i = 0;
+
+    if (type) {
+      i++;
+      whereClauses.push(`t.type = $${i}`);
+      queryParams.push(type);
+    }
+    if (supplierId) {
+      i++;
+      whereClauses.push(`t.supplier_id = $${i}`);
+      queryParams.push(supplierId);
+    }
+    if (customerId) {
+      i++;
+      whereClauses.push(`t.customer_id = $${i}`);
+      queryParams.push(customerId);
+    }
+    if (start) {
+      i++;
+      whereClauses.push(`t.date >= $${i}`);
+      queryParams.push(start);
+    }
+    if (end) {
+      i++;
+      end.setDate(end.getDate() + 1);
+      whereClauses.push(`t.date < $${i}`);
+      queryParams.push(end);
+    }
+
+    const whereString =
+      whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
+
+    // Query DATA (TANPA LIMIT DAN OFFSET)
+    const dataQuery = `
+      SELECT 
+        ti.id AS item_id,
+        t.id, t.date AS transaction_date, t.type AS transaction_type, t.notes,
+        t.process_start, t.process_end, p.sku, p.name AS product_name,
+        ti.purchase_price_at_trans AS purchase_price, 
+        ti.selling_price_at_trans AS selling_price,   
+        l.name AS location_name,
+        ti.quantity, ti.batch_number, ti.expiry_date, 
+        ts.name AS stock_status_name,
+        CASE
+          WHEN t.type = 'IN' THEN (ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)) 
+          WHEN t.type = 'OUT' THEN (ti.quantity * COALESCE(ti.selling_price_at_trans, 0))   
+          ELSE 0
+        END AS transaction_value,
+        s.name AS supplier_name,
+        c.name AS customer_name,
+        u.username AS operator_name
+      FROM transaction_items ti
+      JOIN transactions t ON ti.transaction_id = t.id
+      JOIN products p ON ti.product_id = p.id
+      JOIN locations l ON ti.location_id = l.id
+      LEFT JOIN suppliers s ON t.supplier_id = s.id
+      LEFT JOIN customers c ON t.customer_id = c.id
+      LEFT JOIN users u ON t.operator_id = u.id
+      LEFT JOIN stock_statuses ts ON ti.stock_status_id = ts.id
+      ${whereString} 
+      ORDER BY t.date DESC;
+    `;
+
+    const dataResult = await db.query(dataQuery, queryParams);
+
+    // Mengembalikan data mentah (non-paginated)
+    res.json(dataResult.rows);
+  } catch (err) {
+    console.error("ERROR IN /history/export-all:", err.message);
+    res.status(500).send("Server Error saat mengambil data ekspor transaksi.");
+  }
+});
+
+// ====================================================
+// 3. LAPORAN RIWAYAT TRANSAKSI (MOVEMENT)
+// ... (Kode untuk /movements tidak berubah) ...
 // ====================================================
 router.get("/movements", async (req, res) => {
   try {
     const { 
-      limit = 20, // Default limit
-      page = 1, // Default page
+      limit = 20, 
+      page = 1, 
       startDate, 
       endDate, 
       fromLocationId, 

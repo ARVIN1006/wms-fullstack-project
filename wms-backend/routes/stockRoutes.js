@@ -3,24 +3,46 @@ const router = express.Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/role');
-// GET /api/stocks - (Mendapatkan semua stok untuk Dashboard)
+
+// GET /api/stocks - (Mendapatkan semua stok untuk Dashboard) - DENGAN PAGINATION
 router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
   try {
+    const { page = 1, limit = 1000 } = req.query; // Default limit tinggi untuk dashboard
+    
+    const parsedLimit = parseInt(limit, 10);
+    const parsedPage = parseInt(page, 10);
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    // 1. Query COUNT (Hitung total baris stok)
+    const countQuery = `SELECT COUNT(*) FROM stock_levels s`;
+    const countResult = await db.query(countQuery);
+    const totalCount = parseInt(countResult.rows[0].count, 10);
+    const totalPages = Math.ceil(totalCount / parsedLimit);
+    
+    // 2. Query DATA
     const query = `
       SELECT 
         p.name as product_name,
         p.sku,
-        s.average_cost AS purchase_price, -- MENGGUNAKAN AVERAGE_COST UNTUK ESTIMASI HPP
+        s.average_cost AS purchase_price, 
         l.name as location_name,
         s.quantity,
-        (s.quantity * s.average_cost) AS stock_value -- NILAI STOK DIHITUNG DARI AVERAGE_COST
+        (s.quantity * s.average_cost) AS stock_value
       FROM stock_levels s
       JOIN products p ON s.product_id = p.id
       JOIN locations l ON s.location_id = l.id
       ORDER BY p.name ASC
+      LIMIT $1 OFFSET $2
     `;
-    const result = await db.query(query);
-    res.json(result.rows);
+    const result = await db.query(query, [parsedLimit, offset]);
+    
+    // 3. Kirim data paginated
+    res.json({
+        stocks: result.rows,
+        totalPages,
+        currentPage: parsedPage,
+        totalCount
+    });
   } catch (err) { 
     console.error(err.message);
     res.status(500).send('Server Error');

@@ -27,7 +27,7 @@ function Reports() {
   const [customers, setCustomers] = useState([]); 
   const [loading, setLoading] = useState(true);
 
-  // --- STATE PAGINATION BARU ---
+  // --- STATE PAGINATION ---
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -54,17 +54,33 @@ function Reports() {
     { label: "Catatan", key: "notes" },
   ];
   
-  // Fungsi untuk memformat data sebelum diekspor
-  const getExportData = () => {
-      // PERBAIKAN TYPE ERROR: Tambah safe check (reports || [])
-      return (reports || []).map(item => ({
-          ...item,
-          transaction_date: new Date(item.transaction_date).toLocaleString('id-ID'),
-          transaction_type: item.transaction_type === 'IN' ? 'MASUK' : 'KELUAR',
-          party_name: item.supplier_name || item.customer_name || '-',
-          process_duration_minutes: calculateDuration(item.process_start, item.process_end), 
-          transaction_value: parseFloat(item.transaction_value || 0).toFixed(2),
-      }));
+  // Fungsi untuk memformat data sebelum diekspor (diubah menjadi ASYNC FUNCTION)
+  const getExportData = async () => { 
+      try {
+          const params = {
+              type: type.value || undefined,
+              supplierId: type.value === 'IN' ? supplier?.value : undefined,
+              customerId: type.value === 'OUT' ? customer?.value : undefined,
+              startDate: startDate || undefined,
+              endDate: endDate || undefined
+          };
+          
+          // Panggil endpoint export-all untuk mendapatkan SEMUA data
+          const response = await axios.get('/api/reports/history/export-all', { params }); 
+          const allReports = response.data;
+
+          return (allReports || []).map(item => ({
+              ...item,
+              transaction_date: new Date(item.transaction_date).toLocaleString('id-ID'),
+              transaction_type: item.transaction_type === 'IN' ? 'MASUK' : 'KELUAR',
+              party_name: item.supplier_name || item.customer_name || '-',
+              process_duration_minutes: calculateDuration(item.process_start, item.process_end), 
+              transaction_value: parseFloat(item.transaction_value || 0).toFixed(2),
+          }));
+      } catch (err) {
+          toast.error('Gagal mengambil semua data untuk ekspor.');
+          return []; // Return empty array on failure
+      }
   }
 
   // --- FUNGSI UTAMA FETCH REPORTS (DENGAN FILTER & PAGINATION) ---
@@ -236,11 +252,11 @@ function Reports() {
       <div className="flex justify-between items-center mb-6"> 
         <p className='text-sm font-medium text-gray-600'>Total Data: {totalCount}</p> 
         <ExportButton 
-            data={getExportData()} 
+            data={getExportData} // Passing function untuk fetch data ekspor non-paginated
             headers={csvHeaders} 
             filename={`Laporan_WMS_${new Date().toISOString().slice(0, 10)}.csv`}
         >
-            Unduh Laporan (CSV)
+            Unduh Semua Data (CSV)
         </ExportButton>
       </div>
 

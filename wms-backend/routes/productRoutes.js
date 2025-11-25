@@ -14,13 +14,27 @@ const ALLOWED_SORT_FIELDS = [
   "selling_price",
 ];
 
-// GET /api/products - DENGAN JOIN SUPPLIER, SEARCH, PAGINATION, DAN SORTING
+// --- BARU: GET /api/products/categories - Ambil semua kategori ---
+router.get("/categories", auth, authorize(["admin", "staff"]), async (req, res) => {
+  try {
+    const result = await db.query(
+      "SELECT id, name FROM categories ORDER BY name ASC"
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("ERROR IN /categories:", err.message);
+    res.status(500).send("Server Error saat mengambil kategori.");
+  }
+});
+
+// GET /api/products - DENGAN FILTER KATEGORI, JOIN SUPPLIER, SEARCH, PAGINATION, DAN SORTING
 router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
   try {
     const {
       search = "",
       page = 1,
       limit = 10,
+      categoryId, // BARU: Terima filter Category ID
       sortBy = "created_at",
       sortOrder = "DESC",
     } = req.query;
@@ -43,12 +57,20 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
         `(p.sku ILIKE $${paramIndex} OR p.name ILIKE $${paramIndex})`
       );
     }
+    
+    // BARU: Tambahkan filter Category ID
+    if (categoryId) {
+        paramIndex++;
+        queryParams.push(categoryId);
+        whereClauses.push(`p.category_id = $${paramIndex}`);
+    }
 
     const whereString =
       whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
 
     // 2. Query A: Hitung total data
-    const countQuery = `SELECT COUNT(p.id) FROM products p ${whereString}`;
+    const countQuery = `SELECT COUNT(p.id) FROM products p 
+                        ${whereString}`;
     const countResult = await db.query(countQuery, queryParams);
     const totalCount = parseInt(countResult.rows[0].count, 10);
     const totalPages = Math.ceil(totalCount / parseInt(limit));
@@ -64,9 +86,11 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
     const dataQuery = `
       SELECT 
         p.*, 
-        s.name AS supplier_name
+        s.name AS supplier_name,
+        c.name AS category_name -- JOIN untuk nama kategori
       FROM products p
       LEFT JOIN suppliers s ON p.main_supplier_id = s.id 
+      LEFT JOIN categories c ON p.category_id = c.id
       ${whereString} 
       ORDER BY p.${sortField} ${order} 
       LIMIT $${limitIndex} 
