@@ -7,7 +7,7 @@ const authorize = require('../middleware/role');
 // Middleware: Hanya Admin/Staff yang boleh mengakses
 router.use(auth, authorize(['admin', 'staff']));
 
-// POST /api/movements - Mencatat Perpindahan Baru (DENGAN UPDATE STOK)
+// POST /api/movements - Mencatat Perpindahan Baru (DENGAN UPDATE STOK DAN AVERAGE COST)
 router.post('/', async (req, res) => {
   const client = await db.connect();
   try {
@@ -25,12 +25,17 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ msg: 'Lokasi Asal dan Lokasi Tujuan tidak boleh sama.' });
     }
 
-    // --- 1. CEK STOK ASAL ---
+    // --- 1. CEK STOK ASAL & AMBIL AVERAGE COST LAMA ---
     const stockCheck = await client.query(
-      'SELECT quantity FROM stock_levels WHERE product_id = $1 AND location_id = $2 FOR UPDATE',
+      // Menggunakan FOR UPDATE untuk locking & ambil average_cost
+      'SELECT quantity, average_cost FROM stock_levels WHERE product_id = $1 AND location_id = $2 FOR UPDATE', 
       [product_id, from_location_id]
     );
-    const currentStock = stockCheck.rows[0]?.quantity || 0;
+    const currentStockRow = stockCheck.rows[0];
+    const currentStock = currentStockRow?.quantity || 0;
+    
+    // Simpan Average Cost dari Lokasi Asal
+    const averageCost = currentStockRow?.average_cost || 0.00;
 
     if (currentStock < quantity) {
       await client.query('ROLLBACK');
@@ -38,19 +43,23 @@ router.post('/', async (req, res) => {
     }
 
     // --- 2. KURANGI STOK LOKASI ASAL (FROM) ---
+    // Average cost di lokasi asal TIDAK BERUBAH saat barang keluar
     await client.query(
       'UPDATE stock_levels SET quantity = quantity - $1 WHERE product_id = $2 AND location_id = $3',
       [quantity, product_id, from_location_id]
     );
 
-    // --- 3. TAMBAH STOK LOKASI TUJUAN (TO) ---
+    // --- 3. TAMBAH STOK LOKASI TUJUAN (TO) DENGAN MEMBAWA AVERAGE COST DARI ASAL ---
     // Gunakan UPSERT: Tambah stok jika lokasi tujuan sudah ada, atau buat baris baru jika belum pernah ada stok di sana.
+    // PENTING: Average cost yang disalin digunakan di klausa DO UPDATE dan VALUES ($4)
     await client.query(`
-      INSERT INTO stock_levels (product_id, location_id, quantity)
-      VALUES ($1, $2, $3)
+      INSERT INTO stock_levels (product_id, location_id, quantity, average_cost)
+      VALUES ($1, $2, $3, $4)
       ON CONFLICT (product_id, location_id)
-      DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity
-    `, [product_id, to_location_id, quantity]);
+      DO UPDATE SET 
+        quantity = stock_levels.quantity + EXCLUDED.quantity,
+        average_cost = $4 
+    `, [product_id, to_location_id, quantity, averageCost]); // Gunakan averageCost dari Lokasi Asal
 
 
     // --- 4. CATAT PERPINDAHAN ---

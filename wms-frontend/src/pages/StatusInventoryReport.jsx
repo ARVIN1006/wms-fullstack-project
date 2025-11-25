@@ -92,7 +92,9 @@ function StatusInventoryReport() {
           locationId: selectedLocation?.value || undefined
       };
       
-      const response = await axios.get('/api/reports/status-inventory', { params }); 
+      // PERBAIKAN: Mengubah URL dari /status-inventory menjadi /inventory-status
+      const response = await axios.get('/api/reports/inventory-status', { params }); 
+      
       // FIX UTAMA: Pastikan kita mengambil .reports dari response.data
       if (isMounted) setReports(response.data.reports || []); 
     } catch (err) {
@@ -117,7 +119,7 @@ function StatusInventoryReport() {
         ]);
         
         if (isMounted) { 
-          // Filter 'Good' agar tidak muncul di opsi filter
+          // Filter 'Good' agar tidak muncul di opsi filter (ini sudah benar)
           setStockStatuses(statusRes.data.filter(s => s.name !== 'Good'));
           setLocations(locationRes.data); // Set lokasi
         }
@@ -154,8 +156,16 @@ function StatusInventoryReport() {
     ...locations.map(l => ({ value: l.id, label: l.name }))
 ];
 
-  // Helper fungsi di dalam komponen yang menggunakan date-fns
-  const getStatusText = (expDate) => {
+  // BARU: Helper untuk mendapatkan badge status dari database (stock_status_name)
+  const getStatusBadge = (statusName) => {
+      const base = "px-2 inline-flex text-xs leading-5 font-semibold rounded-full";
+      if (statusName === 'Damaged') return `${base} bg-orange-100 text-orange-800`;
+      if (statusName === 'Expired') return `${base} bg-red-100 text-red-800`;
+      return `${base} bg-gray-100 text-gray-800`; // Status lain (Shouldn't happen with backend filter)
+  }
+  
+  // RENAME: getStatusText -> getExpiryBadge (Hanya untuk penanda visual di kolom Tgl. Kadaluarsa)
+  const getExpiryBadge = (expDate) => {
       if (expDate) {
           const today = new Date();
           const expiry = new Date(expDate);
@@ -168,7 +178,7 @@ function StatusInventoryReport() {
               return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Hampir Kadaluarsa</span>;
           }
       }
-      return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Normal</span>;
+      return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">N/A</span>;
   };
   
   const getFormattedExpDate = (expDate) => {
@@ -268,17 +278,25 @@ function StatusInventoryReport() {
                 <tr key={item.item_id || index}> 
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.transaction_date ? new Date(item.transaction_date).toLocaleString('id-ID') : '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.product_name} ({item.sku})</td>
+                  
+                  {/* PERBAIKAN: Tampilkan badge status dari DB */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {/* Menggunakan helper untuk status visual */}
-                    {getStatusText(item.expiry_date)}
+                    <span className={getStatusBadge(item.stock_status_name)}>
+                        {item.stock_status_name.toUpperCase()}
+                    </span>
                   </td>
+                  
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">{item.quantity}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.location_name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.batch_number || '-'}</td>
+                  
+                  {/* Tgl. Kadaluarsa */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {/* Menggunakan helper untuk format tanggal kadaluarsa */}
                     {getFormattedExpDate(item.expiry_date)}
+                    {/* Tambahkan badge visual kadaluarsa jika ada */}
+                    <div className='mt-1'>{getExpiryBadge(item.expiry_date)}</div>
                   </td>
+                  
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.operator_name}</td>
                 </tr>
               ))}

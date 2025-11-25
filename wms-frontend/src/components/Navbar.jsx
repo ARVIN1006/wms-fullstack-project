@@ -17,6 +17,34 @@ function Navbar() {
     navigate("/login");
   };
 
+  // Helper untuk Link Utama
+  const MainLink = ({ to, children, className = "" }) => (
+      <Link 
+          to={to} 
+          onClick={() => setIsMobileMenuOpen(false)} // Tutup menu saat navigasi
+          className={`link-hover-effect ${className}`}
+      >
+          {children}
+      </Link>
+  );
+  
+  // BARU: Helper untuk Link Dropdown dengan penyesuaian gaya mobile/desktop
+  const DropdownLink = ({ to, children, className = "" }) => (
+      <Link 
+          to={to} 
+          // Gaya dasar: block, px-4, py-2, text-sm
+          className={`block px-4 py-2 text-sm transition 
+                     // Desktop (md:): Hover background light, text dark
+                     md:hover:bg-gray-100 md:hover:text-indigo-600 md:text-gray-800
+                     // Mobile (default): Hover background dark, text light
+                     text-gray-200 hover:bg-gray-600
+                     ${className}`}
+          onClick={() => setIsMobileMenuOpen(false)}
+      >
+          {children}
+      </Link>
+  );
+
   // Komponen Dropdown Sederhana (FIXED: Menggunakan CLICK untuk Toggle & Positioning)
   const DropdownMenu = ({ title, children }) => {
     // State lokal untuk mengontrol menu dropdown (dipertahankan)
@@ -59,33 +87,20 @@ function Navbar() {
         {/* Dropdown Content */}
         {isMenuOpen && (
           <div
-            className="w-full md:absolute left-0 mt-2 md:mt-3 md:w-56 bg-gray-800 md:bg-white text-gray-200 md:text-gray-800 rounded-lg shadow-2xl py-2 z-30" 
+            // PERBAIKAN MOBILE: Menggunakan bg-gray-700 dan mt-1 untuk kontras/pemisahan visual yang lebih baik.
+            className="w-full md:absolute left-0 mt-1 md:mt-0 md:w-56 bg-gray-700 md:bg-white text-gray-200 md:text-gray-800 rounded-lg shadow-2xl py-2 z-30" 
           >
             {/* Map children untuk menambahkan onClick handler */}
             <div className="flex flex-col">
                 {/* Clone children dan tambahkan handler */}
-                {children.map((child, index) => 
-                    <div key={index} onClick={handleLinkClick}>
-                        {child}
-                    </div>
-                )}
+                {/* Kita tidak perlu lagi mapping di sini karena DropdownLink sudah mengurus navigasi dan penutupan menu utama. */}
+                {children}
             </div>
           </div>
         )}
       </div>
     );
   };
-
-  // Helper untuk Link Utama
-  const MainLink = ({ to, children, className = "" }) => (
-      <Link 
-          to={to} 
-          onClick={() => setIsMobileMenuOpen(false)} // Tutup menu saat navigasi
-          className={`link-hover-effect ${className}`}
-      >
-          {children}
-      </Link>
-  );
 
   return (
     <nav className="bg-gray-900 text-gray-200 shadow-xl">
@@ -124,25 +139,25 @@ function Navbar() {
               {/* 1. GRUP MASTER DATA (Hanya Admin) */}
               {isAdmin && (
                 <DropdownMenu title="Master Data">
-                  <Link to="/products" className="block px-4 py-2 text-sm hover:bg-gray-100 hover:text-indigo-600">Produk</Link>
-                  <Link to="/suppliers" className="block px-4 py-2 text-sm hover:bg-gray-100 hover:text-indigo-600">Supplier</Link>
-                  <Link to="/customers" className="block px-4 py-2 text-sm hover:bg-gray-100 hover:text-indigo-600">Pelanggan</Link>
-                  <Link to="/locations" className="block px-4 py-2 text-sm hover:bg-gray-100 hover:text-indigo-600">Lokasi</Link>
+                  <DropdownLink to="/products">Produk</DropdownLink>
+                  <DropdownLink to="/suppliers">Supplier</DropdownLink>
+                  <DropdownLink to="/customers">Pelanggan</DropdownLink>
+                  <DropdownLink to="/locations">Lokasi</DropdownLink>
                 </DropdownMenu>
               )}
 
               {/* 2. GRUP ADMINISTRASI (Hanya Admin) */}
               {isAdmin && (
                 <DropdownMenu title="Laporan">
-                  <Link to="/reports" className="block px-4 py-2 text-sm hover:bg-gray-100">Transaksi (IN/OUT)</Link>
-                  <Link to="/reports/movement" className="block px-4 py-2 text-sm hover:bg-gray-100">Perpindahan</Link>
-                  <Link to="/reports/performance" className="block px-4 py-2 text-sm hover:bg-gray-100">Kinerja Operator</Link>
-                  <Link to="/reports/customer-order" className="block px-4 py-2 text-sm hover:bg-gray-100">Pelanggan & Order</Link>
-                  <Link to="/reports/activity" className="block px-4 py-2 text-sm hover:bg-gray-100">Aktivitas User</Link>
-                  <Link to="/reports/status-inventory" className="block px-4 py-2 text-sm hover:bg-gray-100 text-yellow-700">Stok Bermasalah</Link>
+                  <DropdownLink to="/reports">Transaksi (IN/OUT)</DropdownLink>
+                  <DropdownLink to="/reports/movement">Perpindahan</DropdownLink>
+                  <DropdownLink to="/reports/performance">Kinerja Operator</DropdownLink>
+                  <DropdownLink to="/reports/customer-order">Pelanggan & Order</DropdownLink>
+                  <DropdownLink to="/reports/activity">Aktivitas User</DropdownLink>
+                  <DropdownLink to="/reports/status-inventory" className="text-yellow-400 md:text-yellow-700">Stok Bermasalah</DropdownLink>
                   
                   <div className="border-t my-1"></div>
-                  <Link to="/reports/financial" className="block px-4 py-2 text-sm hover:bg-gray-100 font-medium text-green-700">Laporan Keuangan</Link>
+                  <DropdownLink to="/reports/financial" className="font-medium text-green-400 md:text-green-700">Laporan Keuangan</DropdownLink>
                 </DropdownMenu>
               )}
             </div>

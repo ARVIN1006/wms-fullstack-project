@@ -85,7 +85,8 @@ function StockOpname() {
                 `/api/stocks/specific/${selectedProduct.value}/${selectedLocation.value}`
             );
             // System count adalah total_quantity yang disimpan di database
-            const count = res.data.total_quantity || 0;
+            // FIX: Mengubah res.data.total_quantity menjadi res.data.system_count
+            const count = res.data.system_count || 0; 
             setSystemCount(count);
             // Auto-fill physical count dengan system count saat pertama kali dimuat
             setValue('physicalCount', count);

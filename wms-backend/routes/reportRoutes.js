@@ -860,74 +860,108 @@ router.get("/financial", async (req, res) => {
 });
 
 // ====================================================
-// 8. LAPORAN STOK BERMASALAH (Rusak/Kadaluarsa) DENGAN PAGINATION
+// 8. LAPORAN STOK BERMASALAH (Rusak/Kadaluarsa) DENGAN PAGINATION - FINAL FIX
 // ====================================================
 router.get("/inventory-status", async (req, res) => {
     try {
-        // Terima parameter pagination: page dan limit. Default 1 dan 10.
-        const { status = 'All', page = 1, limit = 10 } = req.query; 
+        const { 
+            page = 1, 
+            limit = 10,
+            startDate, 
+            endDate,
+            statusId, 
+            locationId
+        } = req.query; 
 
         const parsedLimit = parseInt(limit, 10);
         const parsedPage = parseInt(page, 10);
         const offset = (parsedPage - 1) * parsedLimit;
 
-        let condition = ["sl.quantity > 0"]; // Hanya tampilkan yang masih ada stok
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+        if (!validateDateRange(start, end, res)) return;
+
+        // BASE CONDITION PERMANEN: Selalu filter yang statusnya bukan 'Good'
+        let condition = ["ts.name <> 'Good'"]; 
         let params = [];
         let i = 0;
 
-        // Filter: 'Expired' (exp_date < hari ini)
-        if (status === 'Expired') {
+        // 1. Filter Status ID (Jika filter spesifik non-kosong dipilih)
+        if (statusId) {
             i++;
-            // $1
-            condition.push(`p.exp_date < $${i}`);
-            params.push(new Date());
+            // Jika statusId dikirim (misalnya ID untuk 'Damaged'), tambahkan filter spesifik
+            condition.push(`ti.stock_status_id = $${i}`);
+            params.push(statusId);
         }
         
-        // Catatan: Logika untuk status 'Damaged' memerlukan tabel terpisah/pergerakan. 
-        // Untuk saat ini, hanya 'Expired' yang difilter di sisi database (exp_date).
+        // 2. Filter Lokasi
+        if (locationId) {
+            i++;
+            condition.push(`ti.location_id = $${i}`);
+            params.push(locationId);
+        }
 
+        // 3. Filter Tanggal Transaksi
+        if (start) {
+            i++;
+            condition.push(`t.date >= $${i}`);
+            params.push(start);
+        }
+        if (end) {
+            i++;
+            end.setDate(end.getDate() + 1);
+            condition.push(`t.date < $${i}`);
+            params.push(end);
+        }
+        
         const whereStr = condition.length > 0 ? ` WHERE ${condition.join(" AND ")}` : "";
-
-        // 1. HITUNG TOTAL COUNT untuk Pagination
+        
+        // 1. HITUNG TOTAL COUNT
         const countQuery = `
-            SELECT COUNT(p.id)
-            FROM products p
-            INNER JOIN stock_levels sl ON p.id = sl.product_id
+            SELECT COUNT(ti.id)
+            FROM transaction_items ti
+            JOIN transactions t ON ti.transaction_id = t.id
+            JOIN stock_statuses ts ON ti.stock_status_id = ts.id
             ${whereStr};
         `;
         const countResult = await db.query(countQuery, params);
         const totalCount = parseInt(countResult.rows[0].count, 10);
         const totalPages = Math.ceil(totalCount / parsedLimit);
 
-        // 2. QUERY: Data Stok Bermasalah (PAGINATED)
+        // 2. QUERY DATA
         const dataParams = [...params];
         dataParams.push(parsedLimit);
         dataParams.push(offset);
         
-        // Tentukan index untuk LIMIT dan OFFSET
         const limitIndex = params.length + 1;
         const offsetIndex = params.length + 2;
 
         const dataQuery = `
             SELECT
+                t.date AS transaction_date,
                 p.sku,
                 p.name AS product_name,
-                p.unit_of_measure,
-                p.exp_date,
-                sl.quantity AS stock_quantity,
-                l.name AS location_name
-            FROM products p
-            INNER JOIN stock_levels sl ON p.id = sl.product_id
-            INNER JOIN locations l ON sl.location_id = l.id
+                ti.quantity,
+                ts.name AS stock_status_name,
+                l.name AS location_name,
+                ti.batch_number,
+                ti.expiry_date,
+                u.username AS operator_name
+            FROM transaction_items ti
+            JOIN transactions t ON ti.transaction_id = t.id
+            JOIN products p ON ti.product_id = p.id
+            JOIN locations l ON ti.location_id = l.id
+            JOIN stock_statuses ts ON ti.stock_status_id = ts.id
+            LEFT JOIN users u ON t.operator_id = u.id
             ${whereStr}
-            ORDER BY p.exp_date ASC, p.name ASC
+            ORDER BY t.date DESC
             LIMIT $${limitIndex} OFFSET $${offsetIndex};
         `;
         
         const reportData = await db.query(dataQuery, dataParams); 
 
         res.json({
-            report: reportData.rows,
+            reports: reportData.rows,
             metadata: { 
                 totalPages: totalPages,
                 currentPage: parsedPage,
@@ -939,4 +973,5 @@ router.get("/inventory-status", async (req, res) => {
         res.status(500).send("Server Error saat mengambil laporan status inventaris.");
     }
 });
+
 module.exports = router;

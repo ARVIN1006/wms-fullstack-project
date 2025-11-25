@@ -103,5 +103,46 @@ router.get('/specific/:productId/:locationId', auth, authorize(['admin', 'staff'
     console.error('ERROR IN /stocks/specific:', err.message);
     res.status(500).send('Server Error');
   }
+});// BARU: POST /api/stocks/opname - Mencatat dan Menyesuaikan Stok Opname
+router.post('/opname', auth, authorize(['admin', 'staff']), async (req, res) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN'); // Mulai transaksi database
+
+    const { product_id, location_id, adjustment_quantity, physical_count, system_count, notes } = req.body;
+    // req.user.id sudah disuntikkan dari middleware auth
+    const adjustmentQty = parseInt(adjustment_quantity, 10);
+
+    if (!product_id || !location_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ msg: 'Produk dan Lokasi wajib diisi.' });
+    }
+    
+    // Hanya lakukan penyesuaian jika ada perbedaan (adjustmentQty != 0)
+    if (adjustmentQty !== 0) {
+        // Logika Update Stok (UPSERT: Tambah/Kurangi stok yang ada)
+        await client.query(`
+            INSERT INTO stock_levels (product_id, location_id, quantity)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (product_id, location_id)
+            DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity
+        `, [product_id, location_id, adjustmentQty]);
+        
+        // Catat: Untuk WMS sesungguhnya, log detail opname (physical_count, system_count, notes) 
+        // ke tabel khusus `stock_opname_history`
+    }
+
+    await client.query('COMMIT'); // Simpan perubahan
+    
+    res.status(200).json({ msg: `Stok opname berhasil dicatat. Penyesuaian: ${adjustmentQty}` });
+    
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('STOCK OPNAME ERROR:', err.message);
+    res.status(500).json({ msg: 'Gagal mencatat penyesuaian stok: ' + err.message });
+  } finally {
+    client.release();
+  }
 });
+
 module.exports = router;

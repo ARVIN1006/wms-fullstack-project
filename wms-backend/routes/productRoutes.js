@@ -120,28 +120,47 @@ router.get(
   async (req, res) => {
     try {
       const { id } = req.params;
+      const { locationId } = req.query; // Ambil parameter locationId dari querystring
 
-      const result = await db.query(
-        `
-      SELECT 
-        l.id AS location_id,
-        l.name AS location_name,
-        s.quantity
-      FROM stock_levels s
-      JOIN locations l ON s.location_id = l.id
-      WHERE s.product_id = $1 AND s.quantity > 0
-      ORDER BY s.quantity DESC
-      LIMIT 1 -- Ambil hanya yang terbanyak
-    `,
-        [id]
-      );
+      let queryText;
+      let queryParams = [id];
 
-      if (result.rows.length === 0) {
-        return res
-          .status(404)
-          .json({ msg: "Stok produk ini kosong di semua lokasi." });
+      // LOGIKA DIPERBAIKI: Jika locationId spesifik diberikan, ambil stok di lokasi tersebut.
+      if (locationId) {
+        queryText = `
+          SELECT 
+            l.id AS location_id,
+            l.name AS location_name,
+            s.quantity
+          FROM stock_levels s
+          JOIN locations l ON s.location_id = l.id
+          WHERE s.product_id = $1 AND l.id = $2
+        `;
+        queryParams.push(locationId); // $2 = locationId
+      } else {
+        // Logika Fallback: Ambil lokasi dengan stok terbanyak (jika tidak ada locationId)
+        queryText = `
+          SELECT 
+            l.id AS location_id,
+            l.name AS location_name,
+            s.quantity
+          FROM stock_levels s
+          JOIN locations l ON s.location_id = l.id
+          WHERE s.product_id = $1 AND s.quantity > 0
+          ORDER BY s.quantity DESC
+          LIMIT 1
+        `;
       }
 
+
+      const result = await db.query(queryText, queryParams);
+
+      // Jika tidak ada stok, kirim 0, tapi jangan 404
+      if (result.rows.length === 0) {
+        return res.json({ location_id: locationId, location_name: 'N/A', quantity: 0 }); 
+      }
+
+      // Kirim data stok yang ditemukan
       res.json(result.rows[0]);
     } catch (err) {
       console.error(err.message);
@@ -149,7 +168,6 @@ router.get(
     }
   }
 );
-
 // GET /api/products/:id/stock - Mendapatkan detail stok per lokasi (untuk Tabel Produk)
 router.get(
   "/:id/stock",

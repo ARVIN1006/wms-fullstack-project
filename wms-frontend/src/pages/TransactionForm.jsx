@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom'; // Import Link
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
 // --- BARU: Import Hook Form dan Yup ---
@@ -45,7 +45,7 @@ const itemSchema = yup.object().shape({
 
 // Skema untuk seluruh formulir
 const validationSchema = yup.object().shape({
-    transactionType: yup.string().required(), // IN atau OUT
+    // transactionType tidak lagi di register, tapi digunakan di context
     notes: yup.string().nullable(),
     
     // Header Wajib: Supplier untuk IN, Customer untuk OUT
@@ -72,7 +72,7 @@ function TransactionForm() {
     const navigate = useNavigate();
     const { type: urlType } = useParams(); // 'in' atau 'out'
     const transactionType = urlType?.toUpperCase(); 
-
+    
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [locations, setLocations] = useState([]);
     const [stockStatuses, setStockStatuses] = useState([]);
@@ -92,11 +92,13 @@ function TransactionForm() {
         getValues,
         setError,
         clearErrors,
-        formState: { errors } 
+        formState: { errors },
+        reset
     } = useForm({
         resolver: yupResolver(validationSchema),
+        // KRITIS: Pass tipe transaksi ke Yup context untuk validasi kondisional
+        context: { transactionType: transactionType },
         defaultValues: {
-            transactionType: transactionType,
             notes: '',
             supplier: null,
             customer: null,
@@ -125,11 +127,27 @@ function TransactionForm() {
     ];
 
 
+    // --- Efek Reset Form Saat Tipe Transaksi Berubah ---
+    useEffect(() => {
+        // Reset form state (items, supplier/customer, notes) when the URL type changes
+        reset({
+            notes: '',
+            supplier: null,
+            customer: null,
+            categoryFilter: null,
+            items: [],
+        });
+        setItemStockInfo({});
+    }, [urlType, reset]);
+    
+    
     // --- Fetch Stock Info (Stok Tersedia & HPP) ---
     const fetchStockInfo = useCallback(async (index, productId, locationId) => {
+        // Cek jika tipe transaksi tidak valid atau jika IN (tidak perlu cek stok)
         if (!productId || !locationId || transactionType === 'IN') return;
 
         try {
+            // Perbaikan: Endpoint main-stock di productRoutes.js sekarang sudah support locationId
             const res = await axios.get(
                 `/api/products/${productId}/main-stock?locationId=${locationId}`
             );
@@ -137,7 +155,8 @@ function TransactionForm() {
             setItemStockInfo(prev => ({
                 ...prev,
                 [index]: {
-                    availableStock: info.total_quantity || 0,
+                    // Backend sekarang mengirim 'quantity'
+                    availableStock: info.quantity || 0, 
                     currentAvgCost: info.average_cost || 0,
                     sellingPrice: info.selling_price || 0,
                 }
@@ -152,6 +171,7 @@ function TransactionForm() {
 
     // --- Efek Cek Stok Kritis (dipicu oleh perubahan item/kuantitas) ---
     useEffect(() => {
+        // Hanya cek jika OUT dan data master sudah dimuat
         if (transactionType === 'OUT' && !loadingMaster) {
             watchedItems.forEach((item, index) => {
                 const stockInfo = itemStockInfo[index];
@@ -213,6 +233,11 @@ function TransactionForm() {
 
     // --- Handler Submit Utama ---
     const onSubmit = async (data) => {
+        if (!transactionType) {
+            toast.error("Tipe transaksi tidak valid.");
+            return;
+        }
+        
         setIsSubmitting(true);
         try {
             // Mapping data item ke format yang diterima backend
@@ -244,11 +269,16 @@ function TransactionForm() {
             await axios.post(endpoint, payload);
 
             toast.success(`Transaksi ${transactionType === 'IN' ? 'Masuk' : 'Keluar'} berhasil dicatat!`);
-            navigate('/transactions');
+            navigate('/reports'); // Navigate ke halaman laporan
 
         } catch (err) {
             const errorMsg = err.response?.data?.msg || `Gagal mencatat transaksi ${transactionType}.`;
-            toast.error(errorMsg);
+            // Cek untuk error validasi dari server (misalnya: Stok tidak cukup)
+            if (err.response?.status === 400 && err.response.data?.msg) {
+                toast.error(err.response.data.msg);
+            } else {
+                toast.error(errorMsg);
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -280,21 +310,44 @@ function TransactionForm() {
     const ErrorMessage = ({ error }) => {
         return error ? <p className="text-red-500 text-xs mt-1">{error.message}</p> : null;
     };
+    
+    // Tentukan Judul dan Warna
+    const title = transactionType === 'IN' ? '📥 Transaksi Barang Masuk' : '📤 Transaksi Barang Keluar';
+    const activeClass = "bg-blue-600 text-white";
+    const inactiveClass = "bg-gray-200 text-gray-700 hover:bg-gray-300";
 
+    // Jika parameter tipe di URL salah
+    if (transactionType !== 'IN' && transactionType !== 'OUT') {
+        return <div className="p-6">Tipe transaksi tidak valid. Silakan pilih Barang Masuk atau Barang Keluar.</div>;
+    }
 
     return (
         <div className="p-6 bg-white shadow-lg rounded-lg max-w-7xl mx-auto">
+            
+            {/* TIPE TRANSAKSI (BUTTONS) */}
+            <div className="flex justify-start space-x-2 mb-4">
+                <Link
+                    to="/transactions/in"
+                    className={`font-bold py-2 px-4 rounded transition ${transactionType === 'IN' ? activeClass : inactiveClass}`}
+                >
+                    Barang Masuk (IN)
+                </Link>
+                <Link
+                    to="/transactions/out"
+                    className={`font-bold py-2 px-4 rounded transition ${transactionType === 'OUT' ? activeClass : inactiveClass}`}
+                >
+                    Barang Keluar (OUT)
+                </Link>
+            </div>
+            
             <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">
-                {transactionType === 'IN' ? '📥 Transaksi Barang Masuk' : '📤 Transaksi Barang Keluar'}
+                {title}
             </h1>
 
             <form onSubmit={handleSubmit(onSubmit)}>
                 
                 {/* --- HEADER TRANSAKSI --- */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg bg-gray-50">
-                    
-                    {/* Tipe Transaksi & Operator (Hidden Input) */}
-                    <input type="hidden" {...register('transactionType')} />
                     
                     {/* Supplier (IN) atau Customer (OUT) */}
                     <div className='col-span-1'>
@@ -303,6 +356,7 @@ function TransactionForm() {
                         </label>
                         <Select
                             options={partyOptions}
+                            // Memilih field yang tepat berdasarkan transactionType
                             value={transactionType === 'IN' ? watch('supplier') : watch('customer')}
                             onChange={(option) => {
                                 const field = transactionType === 'IN' ? 'supplier' : 'customer';
@@ -310,6 +364,7 @@ function TransactionForm() {
                             }}
                             placeholder={`Pilih ${transactionType === 'IN' ? 'Supplier' : 'Pelanggan'}...`}
                             isClearable={true}
+                            classNamePrefix="react-select"
                         />
                         {/* Menampilkan error header */}
                         <ErrorMessage error={transactionType === 'IN' ? errors.supplier : errors.customer} />
@@ -334,6 +389,7 @@ function TransactionForm() {
                         onChange={(option) => setValue('categoryFilter', option)}
                         placeholder="Semua Kategori"
                         isClearable={true}
+                        classNamePrefix="react-select"
                     />
                 </div>
 
@@ -491,7 +547,7 @@ function TransactionForm() {
                         sellingPrice: 0, 
                         batchNumber: '', 
                         expiryDate: '',
-                        transactionType: transactionType // Pass type to item schema
+                        // Hapus transactionType dari item default karena sudah diatur di context/url
                     })}
                     className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition mb-6"
                 >

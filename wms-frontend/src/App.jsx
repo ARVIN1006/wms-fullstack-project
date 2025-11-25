@@ -76,7 +76,13 @@ function App() {
           <Route path="/customers" element={<CustomerList />} />
           <Route path="/movements" element={<MovementForm />} />
           <Route path="/stock-opname" element={<StockOpname />} />
-          <Route path="/transactions" element={<TransactionForm />} />
+          
+          {/* PERBAIKAN ROUTING TRANSAKSI */}
+          {/* 1. Redirect /transactions ke /transactions/in (Default) */}
+          <Route path="/transactions" element={<Navigate to="/transactions/in" replace />} />
+          {/* 2. Tambahkan parameter :type (in atau out) */}
+          <Route path="/transactions/:type" element={<TransactionForm />} /> 
+          
           {/* RUTE PELAPORAN (Pastikan Semua Ada) */}
           <Route path="/reports" element={<Reports />} />
           <Route path="/reports/movement" element={<MovementReport />} />

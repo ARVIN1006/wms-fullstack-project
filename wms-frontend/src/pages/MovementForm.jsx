@@ -97,13 +97,14 @@ function MovementForm() {
     }, []);
 
     // --- Efek untuk mengecek stok yang tersedia (REAL-TIME) ---
-    const checkStock = useCallback(async () => {
+  const checkStock = useCallback(async () => {
         if (selectedProduct && selectedFromLocation) {
             try {
                 const res = await axios.get(
                     `/api/products/${selectedProduct.value}/main-stock?locationId=${selectedFromLocation.value}`
                 );
-                const currentStock = res.data.total_quantity || 0;
+                // FIX KRITIS: Mengubah res.data.total_quantity menjadi res.data.quantity
+                const currentStock = res.data.quantity || 0; 
                 setAvailableStock(currentStock); 
 
                 // Periksa validasi kustom (stok cukup)
