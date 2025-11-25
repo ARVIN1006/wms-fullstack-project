@@ -115,10 +115,40 @@ CREATE TABLE IF NOT EXISTS transaction_items (
     selling_price_at_trans NUMERIC(10, 2) DEFAULT 0.00    -- BARU
 );
 
--- Tabel Stock Levels (Merujuk Products, Locations)
+-- Tabel Stock Levels (Merujuk Products, Locations) - DENGAN average_cost
 CREATE TABLE IF NOT EXISTS stock_levels (
     product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
     location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,
     quantity INTEGER NOT NULL DEFAULT 0,
+    average_cost NUMERIC(10, 2) DEFAULT 0.00, -- BARU: untuk melacak HPP rata-rata per lokasi
     PRIMARY KEY (product_id, location_id)
 );
+
+-- #################################################
+-- # 4. OPTIMASI: INDEXING (BARU)
+-- #################################################
+
+-- Indexing pada Foreign Keys (FK) dan kolom yang sering di-filter/sort untuk performa
+
+-- Indexing untuk tabel Transactions
+CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions (date);
+CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions (type);
+CREATE INDEX IF NOT EXISTS idx_transactions_supplier ON transactions (supplier_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_customer ON transactions (customer_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_operator ON transactions (operator_id);
+
+-- Indexing untuk tabel Transaction Items
+CREATE INDEX IF NOT EXISTS idx_ti_transaction_id ON transaction_items (transaction_id);
+CREATE INDEX IF NOT EXISTS idx_ti_product_id ON transaction_items (product_id);
+CREATE INDEX IF NOT EXISTS idx_ti_location_id ON transaction_items (location_id);
+CREATE INDEX IF NOT EXISTS idx_ti_stock_status_id ON transaction_items (stock_status_id);
+
+-- Indexing untuk tabel Movements
+CREATE INDEX IF NOT EXISTS idx_movements_date ON movements (date);
+CREATE INDEX IF NOT EXISTS idx_movements_product_id ON movements (product_id); -- FIXED: Menghapus CREATE ganda
+CREATE INDEX IF NOT EXISTS idx_movements_from_loc ON movements (from_location_id);
+CREATE INDEX IF NOT EXISTS idx_movements_to_loc ON movements (to_location_id);
+
+-- Indexing untuk tabel Products
+CREATE INDEX IF NOT EXISTS idx_products_main_supplier ON products (main_supplier_id);
+CREATE INDEX IF NOT EXISTS idx_products_category ON products (category_id);

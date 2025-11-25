@@ -10,10 +10,10 @@ router.get('/', auth, authorize(['admin', 'staff']), async (req, res) => {
       SELECT 
         p.name as product_name,
         p.sku,
-        p.purchase_price,
+        s.average_cost AS purchase_price, -- MENGGUNAKAN AVERAGE_COST UNTUK ESTIMASI HPP
         l.name as location_name,
         s.quantity,
-        (s.quantity * p.purchase_price) AS stock_value
+        (s.quantity * s.average_cost) AS stock_value -- NILAI STOK DIHITUNG DARI AVERAGE_COST
       FROM stock_levels s
       JOIN products p ON s.product_id = p.id
       JOIN locations l ON s.location_id = l.id

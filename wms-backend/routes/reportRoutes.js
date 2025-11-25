@@ -494,7 +494,7 @@ router.get("/customer-order", async (req, res) => {
 });
 
 // ====================================================
-// 7. LAPORAN KEUANGAN
+// 7. LAPORAN KEUANGAN - VALUASI STOK DIPERBAIKI
 // ====================================================
 router.get("/financial", async (req, res) => {
   try {
@@ -522,19 +522,20 @@ router.get("/financial", async (req, res) => {
 
     const whereStr = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
 
+    // VALUASI STOK MENGGUNAKAN AVERAGE_COST DARI STOCK_LEVELS
     const stockValue = await db.query(`
       SELECT 
-        COALESCE(SUM(s.quantity * p.purchase_price), 0) AS total_asset_value,
+        COALESCE(SUM(s.quantity * s.average_cost), 0) AS total_asset_value,
         COALESCE(SUM(s.quantity), 0) AS total_units_in_stock
-      FROM stock_levels s
-      JOIN products p ON s.product_id = p.id;
+      FROM stock_levels s;
     `);
 
+    // PERHITUNGAN PROFIT MENGGUNAKAN PURCHASE_PRICE_AT_TRANS (yang kini berisi Average Cost)
     const profit = await db.query(
       `
       SELECT 
-        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS total_sales_revenue, -- PERBAIKAN COALESCE
-        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS total_cogs,     -- PERBAIKAN COALESCE
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS total_sales_revenue, 
+        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS total_cogs,     
         COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - 
         COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS gross_profit
       FROM transactions t
