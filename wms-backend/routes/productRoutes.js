@@ -373,21 +373,49 @@ router.put("/:id", auth, authorize(["admin", "staff"]), async (req, res) => {
   }
 });
 
-// DELETE /api/products/:id
+// DELETE /api/products/:id - Mencegah penghapusan jika masih ada stok aktif
 router.delete("/:id", auth, authorize(["admin"]), async (req, res) => {
+  const client = await db.connect();
   try {
+    await client.query('BEGIN');
+    
     const { id } = req.params;
-    const deleteOp = await db.query(
+    
+    // 1. Cek Total Stok yang Tersisa untuk Produk ini
+    const stockCheck = await client.query(
+      "SELECT COALESCE(SUM(quantity), 0) AS total_stock FROM stock_levels WHERE product_id = $1",
+      [id]
+    );
+    const totalStock = parseInt(stockCheck.rows[0].total_stock, 10);
+    
+    // 2. Jika total stok > 0, batalkan penghapusan
+    if (totalStock > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        msg: `Gagal: Produk tidak dapat dihapus karena masih memiliki stok aktif sebesar ${totalStock} unit.` 
+      });
+    }
+
+    // 3. Jika stok 0, lanjutkan penghapusan
+    const deleteOp = await client.query(
       "DELETE FROM products WHERE id = $1 RETURNING *",
       [id]
     );
+    
     if (deleteOp.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ msg: "Produk tidak ditemukan!" });
     }
+    
+    await client.query('COMMIT');
     res.json({ msg: "Produk berhasil dihapus!" });
+
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).send("Server Error saat menghapus produk.");
+  } finally {
+    client.release();
   }
 });
 

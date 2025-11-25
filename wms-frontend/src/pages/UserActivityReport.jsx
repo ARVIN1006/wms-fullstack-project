@@ -3,6 +3,8 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import ExportButton from '../components/ExportButton';
 import Select from 'react-select';
+// BARU: Import hook useMasterData
+import { useMasterData } from '../hooks/useMasterData';
 
 const PERIOD_OPTIONS = [
     { value: 'last7', label: '7 Hari Terakhir' },
@@ -12,8 +14,9 @@ const PERIOD_OPTIONS = [
 
 const DEFAULT_PERIOD = PERIOD_OPTIONS.find(o => o.value === 'all'); 
 
-// --- KOMPONEN SKELETON (Unchanged) ---
+// --- KOMPONEN SKELETON (Dipertahankan) ---
 const UserActivityReportSkeleton = () => {
+// ... (kode Skeleton tidak berubah) ...
     // 5 Kolom: Operator, Total Transaksi, Total Unit IN, Total Unit OUT, Terakhir Aktif
     const columns = 5; 
     
@@ -21,20 +24,19 @@ const UserActivityReportSkeleton = () => {
         <tr className="border-b border-gray-200">
             {Array.from({ length: columns }).map((_, i) => (
                 <td key={i} className="px-6 py-4">
-                    <div className={`h-4 bg-gray-300 rounded skeleton-shimmer ${i === 0 ? 'w-1/2' : 'w-1/3'}`}></div>
+                    <div className={`h-4 bg-gray-300 rounded skeleton-shimmer ${i === 3 ? 'w-1/3' : 'w-1/2'}`}></div>
                 </td>
             ))}
         </tr>
     );
 
     return (
-        <div className="p-6 bg-white shadow-lg rounded-lg animate-pulse"> 
-            <div className="h-8 bg-gray-300 rounded w-1/3 mb-6 skeleton-shimmer"></div>
+        <div className="p-6 bg-white shadow-lg rounded-lg relative animate-pulse"> 
             
-            {/* Filter & Export Skeleton */}
-            <div className="flex justify-between items-center mb-6 p-4 border rounded-lg bg-gray-50">
-                <div className="h-10 bg-gray-300 rounded w-48 skeleton-shimmer"></div>
-                <div className="h-10 bg-indigo-300 rounded w-40 skeleton-shimmer"></div>
+            {/* Header & Button Skeleton */}
+            <div className="flex justify-between items-center mb-6">
+                <div className="h-8 bg-gray-300 rounded w-1/4 skeleton-shimmer"></div>
+                <div className="h-10 bg-blue-300 rounded w-40 skeleton-shimmer"></div>
             </div>
             
             {/* Table Skeleton */}
@@ -60,67 +62,48 @@ const UserActivityReportSkeleton = () => {
 // --- END KOMPONEN SKELETON ---
 
 function UserActivityReport() {
-    const [reports, setReports] = useState([]);
-    const [users, setUsers] = useState([]); 
-    const [loading, setLoading] = useState(true);
-    const [period, setPeriod] = useState(DEFAULT_PERIOD); // Menggunakan default 'all'
+    // --- MASTER DATA: Ambil daftar user/operator (Menggunakan Hook useMasterData) ---
+    const { data: users, loading: usersLoading } = useMasterData('/api/users');
 
-    // --- STATE FILTER ---
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [selectedOperator, setSelectedOperator] = useState(null);
-
-    async function fetchReports(isMounted) {
-        try {
-            if (isMounted) setLoading(true);
-            const params = { 
-                period: period.value,
-                startDate: startDate || undefined,
-                endDate: endDate || undefined,
-                operatorId: selectedOperator?.value || undefined
-            };
-            
-            const response = await axios.get('/api/reports/activity', { params });
-
-            // Pastikan API mengembalikan { reports: [...] }
-            if (isMounted) {
-                setReports(response.data.reports || []); // FIX: Tambahkan || [] di sini juga
-            }
-        } catch (err) {
-            if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
-                toast.error('Gagal memuat laporan aktivitas user.');
-            }
-            if (isMounted) setReports([]);
-        } finally {
-            if (isMounted) setLoading(false);
-        }
+    // --- INPUT STATES (Kontrol Form) ---
+    const [periodInput, setPeriodInput] = useState(DEFAULT_PERIOD); 
+    const [startDateInput, setStartDateInput] = useState('');
+    const [endDateInput, setEndDateInput] = useState('');
+    const [selectedOperatorInput, setSelectedOperatorInput] = useState(null);
+    
+    // --- APPLIED FILTERS (Untuk Trigger Fetching pada Hook) ---
+    const [appliedFilters, setAppliedFilters] = useState({
+        period: DEFAULT_PERIOD.value,
+        startDate: undefined,
+        endDate: undefined,
+        operatorId: undefined,
+    });
+    
+    // Helper untuk membuat Query String dari appliedFilters
+    const createQueryString = (filters) => {
+        const params = new URLSearchParams();
+        if (filters.period) params.append('period', filters.period);
+        if (filters.startDate) params.append('startDate', filters.startDate);
+        if (filters.endDate) params.append('endDate', filters.endDate);
+        if (filters.operatorId) params.append('operatorId', filters.operatorId);
+        return params.toString();
     }
+    
+    // URL untuk useMasterData (akan berubah saat appliedFilters berubah)
+    const reportUrl = `/api/reports/activity?${createQueryString(appliedFilters)}`;
+    
+    // --- FETCH REPORTS (Menggunakan Hook useMasterData) ---
+    // Ganti reports menjadi reportsData
+    const { data: reportsData, loading: reportsLoading } = useMasterData(reportUrl, {}); 
+    
+    // CRITICAL FIX: Ekstrak array 'reports' dari objek yang dikembalikan hook (reportsData)
+    const reports = reportsData?.reports || [];
 
-    // Ambil data Laporan dan data User
-    useEffect(() => {
-        let isMounted = true; 
-
-        async function fetchUsers() {
-          try {
-            const response = await axios.get('/api/users'); 
-            if (isMounted) setUsers(response.data); 
-          } catch (err) {
-            if (isMounted) toast.error('Gagal memuat data operator.');
-          }
-        }
-        
-        fetchUsers();
-        fetchReports(isMounted); 
-        
-        return () => {
-            isMounted = false; 
-        };
-    }, [period, startDate, endDate, selectedOperator]); // Re-fetch saat filter berubah
 
     const csvHeaders = [
         { label: "Operator", key: "operator_name" },
         { label: "Role", key: "role" },
-        { label: "Total Transaksi", key: "total_transactions" },
+        { label: "Total Aktivitas", key: "total_activities" },
         { label: "Unit Masuk", key: "total_units_in" },
         { label: "Unit Keluar", key: "total_units_out" },
         { label: "Perpindahan", key: "total_movements" },
@@ -128,7 +111,7 @@ function UserActivityReport() {
 
     // FIX: Mengubah getExportData menjadi ASYNC dan menggunakan useCallback
     const getExportData = useCallback(async () => {
-        // Menggunakan (reports || []) untuk pemeriksaan keamanan
+        // Menggunakan array reports lokal
         return (reports || []).map(r => ({
             ...r,
         }));
@@ -143,12 +126,22 @@ function UserActivityReport() {
 
     const operatorOptions = [
         { value: '', label: 'Semua Operator' },
-        ...users.map(u => ({ value: u.id, label: u.username }))
+        ...(users || []).map(u => ({ value: u.id, label: u.username }))
     ];
 
     const handleFilterSubmit = (e) => {
         e.preventDefault();
+        
+        // Update Applied Filters, yang akan memicu refetch via useMasterData
+        setAppliedFilters({
+            period: periodInput.value,
+            startDate: startDateInput || undefined,
+            endDate: endDateInput || undefined,
+            operatorId: selectedOperatorInput?.value || undefined
+        });
     }
+    
+    const loading = usersLoading || reportsLoading;
     
     if (loading) {
         return <UserActivityReportSkeleton />;
@@ -159,34 +152,34 @@ function UserActivityReport() {
             <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">👥 Laporan Aktivitas User</h1>
             
             <form onSubmit={handleFilterSubmit} className="mb-6 p-4 border rounded-lg bg-gray-50">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                     
                     <div className='col-span-1'>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Periode</label>
                         <Select
                             options={PERIOD_OPTIONS}
-                            value={period}
-                            onChange={setPeriod}
+                            value={periodInput}
+                            onChange={setPeriodInput}
                             classNamePrefix="react-select"
                         />
                     </div>
                     
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
-                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                        <input type="date" value={startDateInput} onChange={(e) => setStartDateInput(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
-                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                        <input type="date" value={endDateInput} onChange={(e) => setEndDateInput(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
                     </div>
-                    
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Filter Operator</label>
                         <Select
                             options={operatorOptions}
-                            value={selectedOperator}
-                            onChange={setSelectedOperator}
+                            value={selectedOperatorInput}
+                            onChange={setSelectedOperatorInput}
                             placeholder="Semua Operator"
                             isClearable={true}
                             classNamePrefix="react-select"
@@ -205,7 +198,7 @@ function UserActivityReport() {
                 <ExportButton
                     data={getExportData}
                     headers={csvHeaders}
-                    filename={`Laporan_Aktivitas_User_${period.value}.csv`}
+                    filename={`Laporan_Aktivitas_User_${appliedFilters.period}.csv`}
                 >
                     Unduh Laporan (CSV)
                 </ExportButton>
@@ -227,7 +220,7 @@ function UserActivityReport() {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {/* FIX: Menerapkan safe check reports || [] di sini */}
+                            {/* Menggunakan array reports lokal yang sudah diekstrak */}
                             {(reports || []).map((report, index) => (
                                 <tr key={report.operator_id || index}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{report.operator_name}</td>

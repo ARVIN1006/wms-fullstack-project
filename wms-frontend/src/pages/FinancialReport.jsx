@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
+// BARU: Import hook useMasterData
+import { useMasterData } from '../hooks/useMasterData'; 
 
 // Helper untuk format mata uang
 const formatCurrency = (amount) => {
@@ -54,78 +56,64 @@ const FinancialReportSkeleton = () => {
 // --- END KOMPONEN SKELETON ---
 
 function FinancialReport() {
-    const [reportData, setReportData] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    // --- INPUT STATES ---
+    const [startDateInput, setStartDateInput] = useState('');
+    const [endDateInput, setEndDateInput] = useState('');
     
-    // BARU: State Pagination untuk Product Summary
+    // --- APPLIED DATE FILTERS (Trigger untuk Hook) ---
+    const [appliedFilters, setAppliedFilters] = useState({
+        startDate: undefined,
+        endDate: undefined
+    });
+    
+    // --- PRODUCT SUMMARY PAGINATION (Local State) ---
     const [summaryPage, setSummaryPage] = useState(1);
-    const [summaryTotalPages, setSummaryTotalPages] = useState(1);
-
-    // Fungsi utama fetch laporan
-    const fetchReport = async (isMounted, start, end, page) => { 
-        try {
-            if (isMounted) setLoading(true);
-            const params = { 
-                startDate: start || undefined, 
-                endDate: end || undefined,
-                summaryPage: page, 
-                summaryLimit: PRODUCT_SUMMARY_LIMIT, 
-            };
-            const response = await axios.get('/api/reports/financial', { params });
-            
-            if (isMounted) {
-                setReportData(response.data);
-                setSummaryTotalPages(response.data.productSummaryMetadata.totalPages);
-                setSummaryPage(response.data.productSummaryMetadata.currentPage);
-            }
-        } catch (err) {
-            if (isMounted) toast.error('Gagal memuat laporan keuangan.');
-        } finally {
-            if (isMounted) setLoading(false);
-        }
-    };
-
-    // Efek untuk fetch awal / filter tanggal
-    useEffect(() => {
-        let isMounted = true;
-        // Fetch halaman 1 saat filter tanggal berubah
-        fetchReport(isMounted, startDate, endDate, 1); 
-        return () => { isMounted = false; };
-    }, [startDate, endDate]); // Dependensi filter tanggal
-
-    // Efek khusus untuk handle perpindahan halaman summary
-    useEffect(() => {
-        let isMounted = true;
-        // Fetch hanya saat summaryPage berubah (filter tanggal stabil)
-        fetchReport(isMounted, startDate, endDate, summaryPage);
-        return () => { isMounted = false; };
-    }, [summaryPage]); // Dependensi hanya pada summaryPage
     
+    // BARU: URL yang mencakup Applied Filters dan Pagination Summary
+    const reportUrl = `/api/reports/financial?startDate=${appliedFilters.startDate || ''}&endDate=${appliedFilters.endDate || ''}&summaryPage=${summaryPage}&summaryLimit=${PRODUCT_SUMMARY_LIMIT}`;
+
+    // --- USE HOOK useMasterData ---
+    const { data: reportsData, loading } = useMasterData(reportUrl, {}); 
+    
+    // Handler untuk menerapkan filter utama
     const handleFilterSubmit = (e) => {
         e.preventDefault();
-        setSummaryPage(1); // Reset pagination saat filter utama berubah
-        fetchReport(true, startDate, endDate, 1); // Panggil fetch ulang
+        
+        // 1. Update Applied Filters (memicu refetch hook)
+        setAppliedFilters({ 
+            startDate: startDateInput || undefined, 
+            endDate: endDateInput || undefined
+        });
+        
+        // 2. Reset Pagination Summary ke halaman 1
+        setSummaryPage(1); 
     };
 
-    // Handlers Pagination
-    const handleSummaryPrev = () => { if (summaryPage > 1) setSummaryPage(summaryPage - 1); };
-    const handleSummaryNext = () => { if (summaryPage < summaryTotalPages) setSummaryPage(summaryPage + 1); };
+    // Handler untuk perubahan halaman summary
+    const handleSummaryChange = (newPage) => { 
+        setSummaryPage(newPage);
+    };
+
+    // Data dari API (dengan safety check)
+    const reportData = reportsData || {};
+    const { valuation, profit, product_summary, productSummaryMetadata } = reportData;
+    
+    const grossProfit = parseFloat(profit?.gross_profit || 0); 
+    const isPositiveProfit = grossProfit >= 0;
+    
+    // Metadata Pagination
+    const summaryTotalPages = productSummaryMetadata?.totalPages || 1;
+    const summaryTotalCount = productSummaryMetadata?.totalCount || 0;
 
 
     if (loading) {
         return <FinancialReportSkeleton />;
     }
 
-    if (!reportData) {
+    // Jika data tidak ada (misalnya error fetching awal)
+    if (!reportData.valuation) {
         return <div className="p-6">Gagal memuat data laporan.</div>;
     }
-
-    // Data dari API
-    const { valuation, profit, product_summary } = reportData;
-    const grossProfit = parseFloat(profit?.gross_profit || 0); // Safe check
-    const isPositiveProfit = grossProfit >= 0;
 
     return (
         <div className="p-6 bg-white shadow-lg rounded-lg">
@@ -135,11 +123,11 @@ function FinancialReport() {
             <form onSubmit={handleFilterSubmit} className="flex gap-4 items-end mb-6 p-4 border rounded-lg bg-gray-50">
                 <div className='flex-1'>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
-                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                    <input type="date" value={startDateInput} onChange={(e) => setStartDateInput(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
                 </div>
                 <div className='flex-1'>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
-                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                    <input type="date" value={endDateInput} onChange={(e) => setEndDateInput(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
                 </div>
                 <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">
                     Filter Data
@@ -215,7 +203,7 @@ function FinancialReport() {
             {summaryTotalPages > 1 && (
                 <div className="flex justify-between items-center mt-4">
                     <button 
-                        onClick={handleSummaryPrev} 
+                        onClick={() => handleSummaryChange(summaryPage - 1)} 
                         disabled={summaryPage <= 1 || loading} 
                         className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50"
                     >
@@ -225,7 +213,7 @@ function FinancialReport() {
                         Halaman <strong>{summaryPage}</strong> dari <strong>{summaryTotalPages}</strong>
                     </span>
                     <button 
-                        onClick={handleSummaryNext} 
+                        onClick={() => handleSummaryChange(summaryPage + 1)} 
                         disabled={summaryPage >= summaryTotalPages || loading} 
                         className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50"
                     >

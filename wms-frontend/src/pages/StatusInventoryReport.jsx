@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react'; // Hapus useEffect yang tidak perlu
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import ExportButton from '../components/ExportButton';
 import Select from 'react-select'; 
 import { format } from "date-fns";
+// BARU: Import hook useMasterData
+import { useMasterData } from '../hooks/useMasterData'; 
+
 const STATUS_REPORT_LIMIT = 15;
 
 // --- KOMPONEN SKELETON (Dipertahankan) ---
@@ -43,18 +46,47 @@ const StatusInventoryReportSkeleton = () => {
 // --- END KOMPONEN SKELETON ---
 
 function StatusInventoryReport() {
-  const [reports, setReports] = useState([]);
-  const [stockStatuses, setStockStatuses] = useState([]); 
-  const [loading, setLoading] = useState(true);
+  // --- MASTER DATA: Ambil Status dan Lokasi (Menggunakan Hook useMasterData) ---
+  const { data: allStockStatuses, loading: statusLoading } = useMasterData('/api/reports/stock-statuses');
+  const { data: allLocations, loading: locationLoading } = useMasterData('/api/locations');
   
-  // State Lokasi
-  const [locations, setLocations] = useState([]); 
+  // Filter 'Good' agar tidak muncul di opsi filter
+  const stockStatuses = (allStockStatuses || []).filter(s => s.name !== 'Good');
+  const locations = allLocations || []; 
 
-  // --- STATE FILTER ---
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState(null); 
-  const [selectedLocation, setSelectedLocation] = useState(null); 
+  // --- INPUT STATES (Kontrol Form) ---
+  const [startDateInput, setStartDateInput] = useState('');
+  const [endDateInput, setEndDateInput] = useState('');
+  const [selectedStatusInput, setSelectedStatusInput] = useState(null); 
+  const [selectedLocationInput, setSelectedLocationInput] = useState(null); 
+  
+  // --- APPLIED FILTERS (Trigger untuk Hook) ---
+  const [appliedFilters, setAppliedFilters] = useState({
+    startDate: undefined,
+    endDate: undefined,
+    statusId: undefined,
+    locationId: undefined,
+  });
+  
+  // Helper untuk membuat Query String dari appliedFilters
+  const createQueryString = (filters) => {
+      const params = new URLSearchParams();
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.statusId) params.append('statusId', filters.statusId);
+      if (filters.locationId) params.append('locationId', filters.locationId);
+      return params.toString();
+  }
+  
+  // URL untuk useMasterData (akan berubah saat appliedFilters berubah)
+  const reportUrl = `/api/reports/inventory-status?${createQueryString(appliedFilters)}`;
+  
+  // --- FETCH REPORTS (Menggunakan Hook useMasterData) ---
+  const { data: reportsData, loading: reportsLoading } = useMasterData(reportUrl, {}); 
+  
+  // Extract actual report array
+  const reports = reportsData?.reports || [];
+
 
   // Definisi Header untuk file CSV
   const csvHeaders = [
@@ -69,8 +101,7 @@ function StatusInventoryReport() {
     { label: "Operator", key: "operator_name" },
   ];
   
-  // FIX: Mengubah getExportData menjadi ASYNC dan menggunakan safe check
-  const getExportData = async () => {
+  const getExportData = useCallback(async () => {
       // Menggunakan (reports || []) untuk pemeriksaan keamanan
       return (reports || []).map(item => ({
           ...item,
@@ -78,72 +109,19 @@ function StatusInventoryReport() {
           expiry_date: item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('id-ID') : '-',
           batch_number: item.batch_number || '-',
       }));
-  }
-
-  // Fungsi Fetch Laporan
-  async function fetchReports(isMounted) {
-    try {
-      if (isMounted) setLoading(true);
-      
-      const params = {
-          startDate: startDate || undefined,
-          endDate: endDate || undefined,
-          statusId: selectedStatus?.value || undefined,
-          locationId: selectedLocation?.value || undefined
-      };
-      
-      // PERBAIKAN: Mengubah URL dari /status-inventory menjadi /inventory-status
-      const response = await axios.get('/api/reports/inventory-status', { params }); 
-      
-      // FIX UTAMA: Pastikan kita mengambil .reports dari response.data
-      if (isMounted) setReports(response.data.reports || []); 
-    } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
-        if (isMounted) toast.error('Gagal memuat data laporan status.');
-      }
-      if (isMounted) setReports([]); // Pastikan reports menjadi array kosong jika gagal
-    } finally {
-      if (isMounted) setLoading(false);
-    }
-  }
-  
-  // --- Ambil Data Master & Laporan (Efek Awal) ---
-  useEffect(() => {
-    let isMounted = true; 
-
-    async function fetchMasterData() {
-      try {
-        const [statusRes, locationRes] = await Promise.all([
-          axios.get('/api/reports/stock-statuses'),
-          axios.get('/api/locations')
-        ]);
-        
-        if (isMounted) { 
-          // Filter 'Good' agar tidak muncul di opsi filter (ini sudah benar)
-          setStockStatuses(statusRes.data.filter(s => s.name !== 'Good'));
-          setLocations(locationRes.data); // Set lokasi
-        }
-      } catch (err) {
-        if (isMounted) toast.error('Gagal memuat data master.');
-      }
-    }
-    fetchMasterData();
-    
-    return () => {
-        isMounted = false;
-    };
-  }, []); 
-
-  // --- Efek yang Memicu Re-fetch saat Filter Berubah ---
-  useEffect(() => {
-    let isMounted = true;
-    fetchReports(isMounted);
-    return () => { isMounted = false; };
-  }, [startDate, endDate, selectedStatus, selectedLocation]); // Dependensi filter
+  }, [reports]);
 
   
   const handleFilterSubmit = (e) => {
       e.preventDefault();
+      
+      // Update APPLIED filters, yang akan memicu refetch via useMasterData
+      setAppliedFilters({
+          startDate: startDateInput || undefined,
+          endDate: endDateInput || undefined,
+          statusId: selectedStatusInput?.value || undefined,
+          locationId: selectedLocationInput?.value || undefined,
+      });
   }
 
   const statusOptions = [
@@ -156,7 +134,7 @@ function StatusInventoryReport() {
     ...locations.map(l => ({ value: l.id, label: l.name }))
 ];
 
-  // BARU: Helper untuk mendapatkan badge status dari database (stock_status_name)
+  // Helper untuk mendapatkan badge status dari database (stock_status_name)
   const getStatusBadge = (statusName) => {
       const base = "px-2 inline-flex text-xs leading-5 font-semibold rounded-full";
       if (statusName === 'Damaged') return `${base} bg-orange-100 text-orange-800`;
@@ -195,6 +173,8 @@ function StatusInventoryReport() {
   };
 
 
+  const loading = statusLoading || locationLoading || reportsLoading;
+
   if (loading) {
     return <StatusInventoryReportSkeleton />;
   }
@@ -209,18 +189,18 @@ function StatusInventoryReport() {
             
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                <input type="date" value={startDateInput} onChange={(e) => setStartDateInput(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
             </div>
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                <input type="date" value={endDateInput} onChange={(e) => setEndDateInput(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
             </div>
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Filter Status</label>
                 <Select
                     options={statusOptions}
-                    value={selectedStatus}
-                    onChange={setSelectedStatus}
+                    value={selectedStatusInput}
+                    onChange={setSelectedStatusInput}
                     placeholder="Semua (Non-Good)"
                     isClearable={true}
                     classNamePrefix="react-select"
@@ -230,8 +210,8 @@ function StatusInventoryReport() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Filter Lokasi</label>
                 <Select
                     options={locationOptions}
-                    value={selectedLocation}
-                    onChange={setSelectedLocation}
+                    value={selectedLocationInput}
+                    onChange={setSelectedLocationInput}
                     placeholder="Semua Lokasi"
                     isClearable={true}
                     classNamePrefix="react-select"
@@ -256,7 +236,7 @@ function StatusInventoryReport() {
         </ExportButton>
       </div>
 
-      {(reports || []).length === 0 && !loading ? (
+      {(reports || []).length === 0 && !reportsLoading ? (
         <p className='text-gray-500 mt-4'>Tidak ada data stok rusak/kadaluarsa ditemukan.</p>
       ) : (
         <div className="overflow-x-auto">
@@ -279,10 +259,10 @@ function StatusInventoryReport() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm">{item.transaction_date ? new Date(item.transaction_date).toLocaleString('id-ID') : '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.product_name} ({item.sku})</td>
                   
-                  {/* PERBAIKAN: Tampilkan badge status dari DB */}
+                  {/* TAMPILKAN STATUS DARI DB */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <span className={getStatusBadge(item.stock_status_name)}>
-                        {item.stock_status_name.toUpperCase()}
+                        {item.stock_status_name?.toUpperCase() || '-'}
                     </span>
                   </td>
                   

@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import SupplierForm from '../components/SupplierForm';
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext'; 
+// BARU: Import hook usePaginatedList
+import { usePaginatedList } from '../hooks/usePaginatedList';
 
 const LIMIT_PER_PAGE = 10;
 
@@ -66,54 +68,32 @@ const SupplierListSkeleton = ({ isAdmin }) => {
 // --- END KOMPONEN SKELETON ---
 
 function SupplierList() {
-  const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [supplierToDelete, setSupplierToDelete] = useState(null);
 
-  // Pagination dan Search
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
+  // Pagination dan Search state internal untuk input
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSearch, setActiveSearch] = useState('');
+
+  // PERUBAHAN KRITIS: Menggantikan semua state Pagination/Search dengan hook
+  const { 
+    data: suppliers, 
+    loading, 
+    refresh,
+    currentPage, 
+    totalPages, 
+    totalCount,
+    activeSearch, // Gunakan activeSearch dari hook
+    handlePageChange, 
+    handleSearchSubmit: hookHandleSearchSubmit,
+    refreshCurrentPage // Mengambil fungsi untuk refresh halaman saat ini
+  } = usePaginatedList('/api/suppliers', LIMIT_PER_PAGE, '');
+
 
   // Role dari Context
   const { userRole } = useAuth();
   const isAdmin = userRole === 'admin';
-
-  // --- Perbaikan useEffect dengan Cleanup Function ---
-  useEffect(() => {
-    let isMounted = true; 
-
-    async function fetchSuppliersData() {
-      try {
-        if (isMounted) setLoading(true); 
-        const response = await axios.get(
-          `/api/suppliers?page=${currentPage}&limit=${LIMIT_PER_PAGE}&search=${activeSearch}`
-        );
-        
-        if (isMounted) { 
-          setSuppliers(response.data.suppliers);
-          setTotalPages(response.data.totalPages);
-          setCurrentPage(response.data.currentPage);
-        }
-      } catch (err) {
-        if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
-          toast.error('Gagal memuat data supplier.');
-        }
-      } finally {
-        if (isMounted) setLoading(false); 
-      }
-    }
-
-    fetchSuppliersData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [currentPage, activeSearch]); 
 
   // --- Handlers Modal & CRUD ---
   const handleCloseFormModal = () => {
@@ -139,15 +119,14 @@ function SupplierList() {
         // UPDATE
         await axios.put(`/api/suppliers/${supplierData.id}`, supplierData);
         toast.success('Supplier berhasil diupdate!');
+        refreshCurrentPage(); // Update di halaman yang sama
       } else {
         // CREATE
         await axios.post('/api/suppliers', supplierData);
         toast.success('Supplier baru berhasil ditambahkan!');
+        refresh(); // Kembali ke halaman 1 atau refresh
       }
       handleCloseFormModal();
-      // Refresh ke halaman 1 jika ada data baru atau memicu re-fetch
-      if (currentPage !== 1) setCurrentPage(1);
-      else setCurrentPage(c => c);
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menyimpan supplier.');
     }
@@ -172,9 +151,9 @@ function SupplierList() {
       
       // Logika Pagination saat menghapus
       if (suppliers.length === 1 && currentPage > 1) {
-        setCurrentPage(currentPage - 1);
+        handlePageChange(currentPage - 1); // Pindah halaman sebelum refresh
       } else {
-        setCurrentPage(c => c);
+        refreshCurrentPage(); // Refresh di halaman yang sama
       }
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menghapus supplier.');
@@ -183,10 +162,11 @@ function SupplierList() {
     }
   };
 
-  // --- Handlers Pagination & Search ---
-  const handleSearchSubmit = (e) => { e.preventDefault(); setCurrentPage(1); setActiveSearch(searchQuery); };
-  const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(currentPage + 1); };
-  const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(currentPage - 1); };
+  // --- Handler Search UI ---
+  const handleSearchSubmit = (e) => { 
+      e.preventDefault(); 
+      hookHandleSearchSubmit(searchQuery); // Panggil handler search dari hook
+  };
 
   // --- RENDER UTAMA ---
   if (loading) {
@@ -239,7 +219,7 @@ function SupplierList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {suppliers.map((supplier) => (
+                {(suppliers || []).map((supplier) => (
                   <tr key={supplier.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{supplier.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{supplier.contact_person || '-'}</td>
@@ -276,13 +256,13 @@ function SupplierList() {
           
           {/* Pagination Controls */}
           <div className="flex justify-between items-center mt-6">
-            <button onClick={handlePrevPage} disabled={currentPage <= 1} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+            <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage <= 1} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
               Sebelumnya
             </button>
             <span className="text-sm">
               Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong>
             </span>
-            <button onClick={handleNextPage} disabled={currentPage >= totalPages} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+            <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage >= totalPages} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
               Berikutnya
             </button>
           </div>

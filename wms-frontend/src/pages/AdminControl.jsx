@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react'; // Hapus useEffect
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import UserForm from '../components/UserForm';
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
+// BARU: Import hook useMasterData
+import { useMasterData } from '../hooks/useMasterData';
 
 // --- KOMPONEN SKELETON BARU ---
 const AdminControlSkeleton = () => {
@@ -52,34 +54,18 @@ const AdminControlSkeleton = () => {
 // --- END KOMPONEN SKELETON ---
 
 function AdminControl() {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
 
   const { userRole, userId: currentUserId } = useAuth();
+  
+  // PERUBAHAN KRITIS: Menggantikan useState dan useEffect dengan hook
+  const { data: users, loading, refetch: fetchUsers } = useMasterData(
+    userRole === 'admin' ? '/api/users' : null // Hanya fetch jika role adalah admin
+  );
 
-  // Fungsi Fetch User List
-  const fetchUsers = async (isMounted) => {
-    if (userRole !== 'admin') return;
-    try {
-      if (isMounted) setLoading(true);
-      const response = await axios.get('/api/users');
-      if (isMounted) setUsers(response.data);
-    } catch (err) {
-      if (isMounted) toast.error('Gagal memuat daftar pengguna.');
-    } finally {
-      if (isMounted) setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    fetchUsers(isMounted);
-    return () => { isMounted = false; };
-  }, [userRole]);
 
   // Handlers Modal & CRUD
   const handleCloseFormModal = () => { setIsFormModalOpen(false); setEditingUser(null); };
@@ -102,7 +88,7 @@ function AdminControl() {
         toast.success('Pengguna baru berhasil ditambahkan!');
       }
       handleCloseFormModal();
-      fetchUsers(true);
+      fetchUsers(); // Panggil fungsi refetch dari hook
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menyimpan data pengguna.');
     }
@@ -124,7 +110,7 @@ function AdminControl() {
     try {
       await axios.delete(`/api/users/${userToDelete.id}`);
       toast.success(`Pengguna ${userToDelete.username} berhasil dihapus.`);
-      fetchUsers(true);
+      fetchUsers(); // Panggil fungsi refetch dari hook
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menghapus pengguna.');
     } finally {
@@ -164,7 +150,7 @@ function AdminControl() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {users.map((user) => (
+              {(users || []).map((user) => (
                 <tr key={user.id} className={user.id === currentUserId ? 'bg-yellow-50' : ''}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{user.username} {user.id === currentUserId && '(Anda)'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">

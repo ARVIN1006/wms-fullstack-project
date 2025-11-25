@@ -1,9 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import ExportButton from "../components/ExportButton";
 import Select from "react-select";
 import AsyncSelect from "react-select/async";
+// BARU: Import hook usePaginatedList
+import { usePaginatedList } from '../hooks/usePaginatedList'; 
+// BARU: Import hook useMasterData
+import { useMasterData } from '../hooks/useMasterData'; 
 
 const LIMIT_PER_PAGE = 20; 
 
@@ -84,21 +88,38 @@ const MovementReportSkeleton = () => {
 
 
 function MovementReport() {
-  const [reports, setReports] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // --- MASTER DATA LOCATIONS (Menggunakan Hook useMasterData) ---
+  const { data: locations, loading: masterLoading } = useMasterData('/api/locations');
 
-  // --- STATE PAGINATION ---
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
+  // --- INPUT STATES (Untuk kontrol form) ---
+  const [startDateInput, setStartDateInput] = useState("");
+  const [endDateInput, setEndDateInput] = useState("");
+  const [selectedFromLocationInput, setSelectedFromLocationInput] = useState(null);
+  const [selectedToLocationInput, setSelectedToLocationInput] = useState(null);
+  const [selectedProductInput, setSelectedProductInput] = useState(null);
+  
+  // --- APPLIED FILTER STATE (Untuk Hook Dependency) ---
+  const [appliedFilters, setAppliedFilters] = useState({
+    startDate: undefined,
+    endDate: undefined,
+    fromLocationId: undefined,
+    toLocationId: undefined,
+    productId: undefined,
+  });
 
-  // --- STATE FILTER ---
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [selectedFromLocation, setSelectedFromLocation] = useState(null);
-  const [selectedToLocation, setSelectedToLocation] = useState(null);
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  // --- HOOK PAGINATION & FETCHING ---
+  const {
+    data: reports,
+    loading: reportsLoading,
+    currentPage,
+    totalPages,
+    totalCount,
+    handlePageChange,
+    resetPagination 
+  } = usePaginatedList('/api/reports/movements', LIMIT_PER_PAGE, appliedFilters);
+  
+  const loading = reportsLoading || masterLoading;
+
 
   // Definisi Header untuk file CSV (unchanged)
   const csvHeaders = [
@@ -115,12 +136,13 @@ function MovementReport() {
   // FIX: Mengubah fungsi menjadi ASYNC untuk ExportButton
   const getExportData = async () => {
     try {
+        // Gunakan appliedFilters untuk konsistensi data ekspor
         const params = {
-            startDate: startDate || undefined,
-            endDate: endDate || undefined,
-            fromLocationId: selectedFromLocation?.value || undefined,
-            toLocationId: selectedToLocation?.value || undefined,
-            productId: selectedProduct?.value || undefined,
+            startDate: appliedFilters.startDate || undefined,
+            endDate: appliedFilters.endDate || undefined,
+            fromLocationId: appliedFilters.fromLocationId || undefined,
+            toLocationId: appliedFilters.toLocationId || undefined,
+            productId: appliedFilters.productId || undefined,
         };
 
         const response = await axios.get('/api/reports/movements/export-all', { params });
@@ -153,87 +175,30 @@ function MovementReport() {
     }
   };
 
-  // --- FUNGSI FETCH REPORTS (DENGAN PAGINATION) ---
-  async function fetchReports(isMounted, page = 1) { 
-    try {
-      if (isMounted) setLoading(true); 
-
-      // Persiapan filter query
-      const params = {
-        limit: LIMIT_PER_PAGE, 
-        page: page,             
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        fromLocationId: selectedFromLocation?.value || undefined,
-        toLocationId: selectedToLocation?.value || undefined,
-        productId: selectedProduct?.value || undefined,
-      };
-
-      const response = await axios.get("/api/reports/movements", { params });
-      
-      if (isMounted) { 
-        setReports(response.data.reports); 
-        setTotalPages(response.data.totalPages);
-        setTotalCount(response.data.totalCount);
-        setCurrentPage(response.data.currentPage);
-      }
-    } catch (err) {
-      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
-        toast.error("Gagal memuat data laporan pergerakan.");
-      }
-      if (isMounted) {
-        setReports([]);
-        setTotalPages(0);
-        setTotalCount(0);
-      }
-    } finally {
-      if (isMounted) setLoading(false); 
-    }
-  }
-  
-  // --- Perbaikan useEffect dengan Cleanup Function ---
-  useEffect(() => {
-    let isMounted = true; 
-
-    async function fetchLocations() {
-      try {
-        const response = await axios.get("/api/locations");
-        if (isMounted) setLocations(response.data); 
-      } catch (err) {
-        if (isMounted) toast.error("Gagal memuat data lokasi master.");
-      }
-    }
-    
-    fetchLocations();
-    // FIX: Re-fetch dipicu oleh perubahan filter
-    fetchReports(isMounted, 1); 
-    
-    return () => {
-        isMounted = false; 
-    };
-  }, [startDate, endDate, selectedFromLocation, selectedToLocation, selectedProduct]); 
-
   // Handler saat tombol 'Filter' diklik
   const handleFilterSubmit = (e) => {
     e.preventDefault();
-    setCurrentPage(1); 
-    // fetchReports akan dipanggil melalui useEffect karena state filter berubah
+    
+    // 1. Terapkan filter dari input state ke applied state
+    setAppliedFilters({
+        startDate: startDateInput || undefined,
+        endDate: endDateInput || undefined,
+        fromLocationId: selectedFromLocationInput?.value || undefined,
+        toLocationId: selectedToLocationInput?.value || undefined,
+        productId: selectedProductInput?.value || undefined,
+    });
+    
+    // 2. Reset pagination ke halaman 1
+    resetPagination();
+    // Hook akan otomatis memicu fetchData karena appliedFilters berubah
   };
 
-  // --- Handlers Pagination (Dibutuhkan untuk fix ReferenceError) ---
+  // --- Handlers Pagination (Menggunakan Hook Handler) ---
   const handlePrevPage = () => {
-    if (currentPage > 1) {
-        const newPage = currentPage - 1;
-        setCurrentPage(newPage);
-        fetchReports(true, newPage);
-    }
+    handlePageChange(currentPage - 1);
   };
   const handleNextPage = () => {
-    if (currentPage < totalPages) {
-        const newPage = currentPage + 1;
-        setCurrentPage(newPage);
-        fetchReports(true, newPage);
-    }
+    handlePageChange(currentPage + 1);
   };
   // --- END Handlers Pagination ---
 
@@ -265,8 +230,8 @@ function MovementReport() {
             </label>
             <input
               type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              value={startDateInput}
+              onChange={(e) => setStartDateInput(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
@@ -277,8 +242,8 @@ function MovementReport() {
             </label>
             <input
               type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              value={endDateInput}
+              onChange={(e) => setEndDateInput(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           </div>
@@ -289,10 +254,11 @@ function MovementReport() {
             </label>
             <Select
               options={locationOptions}
-              value={selectedFromLocation}
-              onChange={setSelectedFromLocation}
+              value={selectedFromLocationInput}
+              onChange={setSelectedFromLocationInput}
               placeholder="Semua Asal"
               isClearable={true}
+              classNamePrefix="react-select"
             />
           </div>
 
@@ -302,10 +268,11 @@ function MovementReport() {
             </label>
             <Select
               options={locationOptions}
-              value={selectedToLocation}
-              onChange={setSelectedToLocation}
+              value={selectedToLocationInput}
+              onChange={setSelectedToLocationInput}
               placeholder="Semua Tujuan"
               isClearable={true}
+              classNamePrefix="react-select"
             />
           </div>
         </div>
@@ -317,10 +284,11 @@ function MovementReport() {
             </label>
             <AsyncSelect
               loadOptions={loadProductOptions}
-              value={selectedProduct}
-              onChange={setSelectedProduct}
+              value={selectedProductInput}
+              onChange={setSelectedProductInput}
               placeholder="Ketik untuk mencari Produk..."
               isClearable={true}
+              classNamePrefix="react-select"
             />
           </div>
           <div>
@@ -348,7 +316,7 @@ function MovementReport() {
         </ExportButton>
       </div>
 
-      {(reports || []).length === 0 && !loading ? (
+      {(reports || []).length === 0 && !reportsLoading ? (
         <p className="text-gray-500 mt-4">
           Tidak ada data pergerakan tercatat.
         </p>
@@ -404,13 +372,13 @@ function MovementReport() {
             <div className="flex justify-between items-center mt-6">
                 <p className='text-sm text-gray-600'>Menampilkan {reports.length} dari {totalCount} data.</p>
                 <div className='space-x-4'>
-                    <button onClick={handlePrevPage} disabled={currentPage <= 1 || loading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+                    <button onClick={handlePrevPage} disabled={currentPage <= 1 || reportsLoading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
                         &laquo; Sebelumnya
                     </button>
                     <span className="text-sm">
                         Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong>
                     </span>
-                    <button onClick={handleNextPage} disabled={currentPage >= totalPages || loading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+                    <button onClick={handleNextPage} disabled={currentPage >= totalPages || reportsLoading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
                         Berikutnya &raquo;
                     </button>
                 </div>

@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react'; // Hapus useEffect
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import LocationForm from '../components/LocationForm'; 
 import ConfirmModal from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
+// BARU: Import hook useMasterData
+import { useMasterData } from '../hooks/useMasterData'; 
 
 // --- KOMPONEN SKELETON BARU ---
 const LocationListSkeleton = ({ isAdmin }) => {
@@ -63,8 +65,9 @@ const LocationListSkeleton = ({ isAdmin }) => {
 // --- END KOMPONEN SKELETON ---
 
 function LocationList() {
-  const [locations, setLocations] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // PERUBAHAN KRITIS: Menggantikan useState dan useEffect dengan hook
+  const { data: locations, loading, refetch: fetchLocations } = useMasterData('/api/locations');
+  
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -73,33 +76,7 @@ function LocationList() {
   const { userRole } = useAuth();
   const isAdmin = userRole === 'admin';
 
-  // Fungsi Fetch Lokasi (dengan Total Stok)
-  async function fetchLocations(isMounted) { // BARU: Terima flag isMounted
-    try {
-      if (isMounted) setLoading(true); // Cek sebelum set loading
-      // API locations sekarang mengembalikan 'total_stock'
-      const response = await axios.get(`/api/locations`); 
-      if (isMounted) setLocations(response.data); // Cek sebelum set state
-    } catch (err) {
-      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
-        toast.error('Gagal memuat data lokasi.');
-      }
-    } finally {
-      if (isMounted) setLoading(false); // Cek sebelum set loading
-    }
-  }
-
-  // --- Perbaikan useEffect dengan Cleanup Function ---
-  useEffect(() => {
-    let isMounted = true; // BARU: Flag untuk cleanup
-    fetchLocations(isMounted); // Kirim flag ke fungsi fetch
-
-    return () => {
-      isMounted = false; // Cleanup function: set flag ke false saat unmount
-    };
-  }, []);
-
-  // --- Handlers Modal & CRUD (Logic tetap sama, hanya memanggil fetchLocations) ---
+  // --- Handlers Modal & CRUD ---
   const handleCloseFormModal = () => {
     setIsFormModalOpen(false);
     setEditingLocation(null);
@@ -127,7 +104,7 @@ function LocationList() {
         toast.success('Lokasi baru berhasil ditambahkan!');
       }
       handleCloseFormModal();
-      fetchLocations(true); // Re-fetch
+      fetchLocations(); // Panggil fungsi refetch dari hook
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menyimpan lokasi.');
     }
@@ -149,7 +126,7 @@ function LocationList() {
     try {
       await axios.delete(`/api/locations/${locationToDelete.id}`); 
       toast.success(`Lokasi "${locationToDelete.name}" berhasil dihapus.`);
-      fetchLocations(true); // Re-fetch
+      fetchLocations(); // Panggil fungsi refetch dari hook
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Gagal menghapus lokasi.');
     } finally {

@@ -13,7 +13,32 @@ async function getCurrentStockAndCost(client, productId, locationId) {
   return result.rows[0] || { quantity: 0, average_cost: 0.0 };
 }
 
-// POST /api/transactions/in (Barang Masuk - AVERAGE COST IMPLEMENTATION)
+// BARU: Fungsi Helper untuk Mendapatkan Utilisasi Volume Lokasi
+async function getLocationVolumeUtilization(client, locationId) {
+  // 1. Ambil Kapasitas Maksimum Lokasi
+  const maxCapRes = await client.query(
+    "SELECT max_capacity_m3 FROM locations WHERE id = $1",
+    [locationId]
+  );
+  const maxCapacity = parseFloat(maxCapRes.rows[0]?.max_capacity_m3 || 0);
+
+  // 2. Hitung Volume yang Sudah Terpakai Saat Ini
+  const currentVolumeRes = await client.query(
+    `
+        SELECT 
+            COALESCE(SUM(sl.quantity * p.volume_m3), 0) AS current_volume_used
+        FROM stock_levels sl
+        JOIN products p ON sl.product_id = p.id
+        WHERE sl.location_id = $1
+    `,
+    [locationId]
+  );
+  const currentVolumeUsed = parseFloat(currentVolumeRes.rows[0]?.current_volume_used || 0);
+
+  return { maxCapacity, currentVolumeUsed };
+}
+
+// POST /api/transactions/in (Barang Masuk - DENGAN KAPASITAS CEK)
 router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
   const client = await db.connect();
   try {
@@ -22,14 +47,56 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
     const { notes, items, supplier_id } = req.body;
     const operator_id = req.user.id;
 
+    // --- Cek Kapasitas Lokasi untuk Setiap Item Masuk ---
+    const checkedLocations = new Map();
+
+    for (const item of items) {
+      const { product_id, location_id, quantity, purchase_price } = item;
+
+      if (quantity <= 0 || !product_id || !location_id) {
+        throw new Error(
+          "Item baris wajib memiliki Produk, Lokasi, dan Jumlah."
+        );
+      }
+      
+      // Ambil Volume Produk yang akan masuk
+      const productVolumeRes = await client.query(
+          "SELECT volume_m3 FROM products WHERE id = $1",
+          [product_id]
+      );
+      const itemVolume = parseFloat(productVolumeRes.rows[0]?.volume_m3 || 0.01);
+      const incomingVolume = itemVolume * quantity;
+      
+      // Hitung Utilisasi Volume Lokasi (Hanya dilakukan sekali per lokasi)
+      if (!checkedLocations.has(location_id)) {
+          const { maxCapacity, currentVolumeUsed } = await getLocationVolumeUtilization(client, location_id);
+          checkedLocations.set(location_id, { maxCapacity, currentVolumeUsed });
+      }
+
+      const locationData = checkedLocations.get(location_id);
+      
+      const newTotalVolume = locationData.currentVolumeUsed + incomingVolume;
+      
+      // KRITIS: KAPASITAS CEK
+      if (newTotalVolume > locationData.maxCapacity) {
+          throw new Error(
+              `Kapasitas Lokasi ${location_id} terlampaui. Volume terpakai baru: ${newTotalVolume.toFixed(2)} m³ (Maks: ${locationData.maxCapacity.toFixed(2)} m³)`
+          );
+      }
+      
+      // Update Total Volume Terpakai untuk lokasi tersebut (untuk item berikutnya)
+      locationData.currentVolumeUsed = newTotalVolume;
+    }
+
+
     // 1. Buat Header Transaksi
     const transResult = await client.query(
       "INSERT INTO transactions (type, notes, supplier_id, operator_id, process_start, process_end) VALUES ('IN', $1, $2, $3, NOW(), NOW()) RETURNING id",
       [notes, supplier_id || null, operator_id]
     );
     const transactionId = transResult.rows[0].id;
-
-    // 2. Proses Setiap Item Barang
+    
+    // 2. Proses Setiap Item Barang (Loop Ulang untuk Mencegah Logika Duplikat)
     for (const item of items) {
       const {
         product_id,
@@ -42,13 +109,7 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
         expiry_date,
       } = item;
 
-      if (quantity <= 0 || !product_id || !location_id) {
-        throw new Error(
-          "Item baris wajib memiliki Produk, Lokasi, dan Jumlah."
-        );
-      }
-
-      // --- LOGIKA AVERAGE COST BARU ---
+      // --- LOGIKA AVERAGE COST ---
       const currentStock = await getCurrentStockAndCost(
         client,
         product_id,
@@ -59,7 +120,6 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
       const inQty = parseFloat(quantity);
       const inPrice = parseFloat(purchase_price);
 
-      // Hitung Biaya Rata-Rata Baru
       let newAvgCost;
       if (oldQty + inQty > 0) {
         newAvgCost =
@@ -69,7 +129,6 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
       }
       
       // 2a. Menyimpan detail di transaction_items (purchase_price_at_trans = Harga Masuk)
-      // Harga di sini adalah harga HPP untuk item yang baru masuk
       await client.query(
         "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date, purchase_price_at_trans, selling_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         [
@@ -80,7 +139,7 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
           stock_status_id,
           batch_number || null,
           expiry_date || null,
-          inPrice, // Simpan Harga Beli Item Masuk sebagai HPP Transaksi IN
+          inPrice, 
           selling_price,
         ] 
       );
@@ -93,9 +152,9 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
         ON CONFLICT (product_id, location_id)
         DO UPDATE SET 
             quantity = stock_levels.quantity + EXCLUDED.quantity,
-            average_cost = $4 -- Set cost baru setelah perhitungan
+            average_cost = $4 
       `,
-        [product_id, location_id, quantity, newAvgCost] // Gunakan newAvgCost
+        [product_id, location_id, quantity, newAvgCost] 
       );
       
       // 2c. Update Master Data Produk (Harga Jual Terbaru saja)
@@ -117,6 +176,12 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
     res.json({ msg: "Barang masuk berhasil dicatat!", transactionId });
   } catch (err) {
     await client.query("ROLLBACK");
+    
+    // Tangani error kapasitas dengan kode 400
+    if (err.message.includes("Kapasitas Lokasi terlampaui")) {
+        return res.status(400).json({ msg: err.message });
+    }
+    
     console.error("TRANSACTION IN ERROR:", err.message); 
     res.status(500).json({ msg: "Gagal mencatat transaksi: " + err.message });
   } finally {

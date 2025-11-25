@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import ExportButton from '../components/ExportButton';
 import Select from 'react-select';
+// BARU: Import hook useMasterData
+import { useMasterData } from '../hooks/useMasterData';
 
 const PERIOD_OPTIONS = [
     { value: 'last30', label: '30 Hari Terakhir' },
@@ -67,39 +69,22 @@ const PerformanceReportSkeleton = () => {
     );
 };
 // --- END KOMPONEN SKELETON ---
+
 function PerformanceReport() {
-    const [reports, setReports] = useState([]);
-    const [loading, setLoading] = useState(true);
-    // FIX: Menggunakan default 'all'
-    const [period, setPeriod] = useState(DEFAULT_PERIOD); 
+    // --- INPUT STATE ---
+    const [periodInput, setPeriodInput] = useState(DEFAULT_PERIOD); 
 
-    async function fetchReports(isMounted) {
-        try {
-            if (isMounted) setLoading(true);
-            const params = { period: period.value };
-            // FIX: API performance sekarang mengembalikan { reports: [...] }
-            const response = await axios.get('/api/reports/performance', { params });
+    // --- APPLIED STATE (Trigger) ---
+    const [appliedPeriod, setAppliedPeriod] = useState(DEFAULT_PERIOD.value);
 
-            if (isMounted) {
-                // FIX: Memastikan mengambil reports dari object response
-                setReports(response.data.reports || []); // FIX: Safe check
-            }
-        } catch (err) {
-            if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
-                toast.error('Gagal memuat laporan kinerja.');
-            }
-            if (isMounted) setReports([]); 
-        } finally {
-            if (isMounted) setLoading(false);
-        }
-    }
+    // --- USE HOOK useMasterData ---
+    // reportsData adalah objek: { reports: [...] }
+    const reportUrl = `/api/reports/performance?period=${appliedPeriod}`;
+    const { data: reportsData, loading } = useMasterData(reportUrl, {}); 
+    
+    // Extract actual report array
+    const reports = reportsData?.reports || [];
 
-    useEffect(() => {
-        let isMounted = true;
-        fetchReports(isMounted);
-
-        return () => { isMounted = false; };
-    }, [period]);
 
     const csvHeaders = [
         { label: "Operator", key: "operator_name" },
@@ -110,7 +95,15 @@ function PerformanceReport() {
         { label: "Total Gross Profit (Rp)", key: "total_gross_profit" },
     ];
 
-    const getExportData = async () => {
+    // BARU: Handler Submit Filter
+    const handleFilterSubmit = (e) => {
+        e.preventDefault();
+        // Set applied period untuk memicu refetch hook
+        setAppliedPeriod(periodInput.value);
+    }
+
+
+    const getExportData = useCallback(async () => {
         // FIX: Menambahkan check (reports || [])
         return (reports || []).map(r => ({
             ...r,
@@ -118,7 +111,7 @@ function PerformanceReport() {
             avg_outbound_time: parseFloat(r.avg_outbound_time || 0).toFixed(2),
             total_gross_profit: parseFloat(r.total_gross_profit || 0).toFixed(2),
         }));
-    };
+    }, [reports]);
 
     if (loading) {
         return <PerformanceReportSkeleton />;
@@ -128,24 +121,27 @@ function PerformanceReport() {
         <div className="p-6 bg-white shadow-lg rounded-lg">
             <h1 className="text-2xl font-bold text-gray-800 mb-4">⚡ Laporan Kinerja Operator</h1>
             
-            <div className="flex justify-between items-center mb-6 p-4 border rounded-lg bg-gray-50">
+            <form onSubmit={handleFilterSubmit} className="flex justify-between items-center mb-6 p-4 border rounded-lg bg-gray-50">
                 <div className='w-full max-w-xs'>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Filter Periode</label>
                     <Select
                         options={PERIOD_OPTIONS}
-                        value={period}
-                        onChange={setPeriod}
+                        value={periodInput}
+                        onChange={setPeriodInput}
                         classNamePrefix="react-select"
                     />
                 </div>
+                <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">
+                    Tampilkan Laporan
+                </button>
                 <ExportButton
                     data={getExportData} 
                     headers={csvHeaders}
-                    filename={`Laporan_Kinerja_Operator_${period.value}.csv`}
+                    filename={`Laporan_Kinerja_Operator_${appliedPeriod}.csv`}
                 >
                     Unduh Laporan (CSV)
                 </ExportButton>
-            </div>
+            </form>
 
             {(reports || []).length === 0 ? (
                 <p className="text-gray-500">Tidak ada data kinerja operator pada periode ini.</p>

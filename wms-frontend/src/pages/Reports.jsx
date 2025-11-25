@@ -3,6 +3,8 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import ExportButton from '../components/ExportButton';
 import Select from 'react-select'; 
+// BARU: Import hook usePaginatedList
+import { usePaginatedList } from '../hooks/usePaginatedList'; 
 
 const LIMIT_PER_PAGE = 20; // Konstanta untuk limit halaman
 
@@ -87,50 +89,109 @@ const ReportsSkeleton = () => {
 
 
 function Reports() {
-  const [reports, setReports] = useState([]);
   const [suppliers, setSuppliers] = useState([]); 
   const [customers, setCustomers] = useState([]); 
-  const [loading, setLoading] = useState(true);
 
-  // --- STATE PAGINATION ---
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
-
-  // --- STATE FILTER ---
-  const [type, setType] = useState(typeOptions[0]);
-  const [supplier, setSupplier] = useState(null);
-  const [customer, setCustomer] = useState(null);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-
-  // Definisi Header untuk file CSV
-  const csvHeaders = [
-    { label: "Tanggal", key: "transaction_date" },
-    { label: "Tipe", key: "transaction_type" },
-    { label: "Nilai Transaksi (Rp)", key: "transaction_value" }, 
-    { label: "Operator", key: "operator_name" },
-    { label: "Supplier/Customer", key: "party_name" }, 
-    { label: "Produk (SKU)", key: "product_name" },
-    { label: "Jumlah", key: "quantity" },
-    { label: "Status Stok", key: "stock_status_name" }, 
-    { label: "Lokasi", key: "location_name" },
-    { label: "Waktu Proses (Menit)", key: "process_duration_minutes" }, 
-    { label: "Catatan", key: "notes" },
-  ];
+  // --- INPUT STATES (Dapat diubah pengguna) ---
+  const [typeInput, setTypeInput] = useState(typeOptions[0]);
+  const [supplierInput, setSupplierInput] = useState(null);
+  const [customerInput, setCustomerInput] = useState(null);
+  const [startDateInput, setStartDateInput] = useState('');
+  const [endDateInput, setEndDateInput] = useState('');
   
-  // Fungsi untuk memformat data sebelum diekspor (diubah menjadi ASYNC FUNCTION)
+  // --- APPLIED STATES (Digunakan oleh Hook, hanya berubah saat tombol diklik) ---
+  const [appliedFilters, setAppliedFilters] = useState({
+      type: typeOptions[0].value,
+      supplierId: undefined, 
+      customerId: undefined, 
+      startDate: undefined,
+      endDate: undefined
+  });
+
+
+  // 1. Tentukan Dependency Filter untuk Hook (hanya menggunakan appliedFilters)
+  const filterDependencies = {
+      type: appliedFilters.type || undefined,
+      supplierId: appliedFilters.supplierId || undefined, 
+      customerId: appliedFilters.customerId || undefined, 
+      startDate: appliedFilters.startDate || undefined,
+      endDate: appliedFilters.endDate || undefined
+  };
+
+  // 2. Gunakan Hook usePaginatedList
+  const {
+      data: reports,
+      loading: reportsLoading, // Rename loading state
+      currentPage,
+      totalPages,
+      totalCount,
+      handlePageChange,
+      resetPagination // Gunakan fungsi baru untuk reset
+  } = usePaginatedList('/api/reports/history', LIMIT_PER_PAGE, filterDependencies);
+
+  // --- Ambil Data Master saat Awal ---
+  const [masterLoading, setMasterLoading] = useState(true);
+  useEffect(() => {
+    let isMounted = true; 
+
+    async function fetchMasterData() {
+        try {
+            // Fetch Supplier dan Customer untuk dropdown filter
+            const [supplierRes, customerRes] = await Promise.all([
+                axios.get('/api/suppliers?page=1&limit=1000'),
+                axios.get('/api/customers?page=1&limit=1000')
+            ]);
+            
+            if (isMounted) { 
+              setSuppliers(supplierRes.data.suppliers);
+              setCustomers(customerRes.data.customers);
+              setMasterLoading(false);
+            }
+
+        } catch (err) {
+            if (isMounted) {
+                toast.error('Gagal memuat data master untuk filter.');
+                setMasterLoading(false);
+            }
+        }
+    }
+    fetchMasterData();
+    
+    return () => {
+        isMounted = false; 
+    };
+  }, []);
+
+  // Handler saat tombol 'Tampilkan Laporan' diklik
+  const handleFilterSubmit = (e) => {
+      e.preventDefault();
+      
+      // Update APPLIED filters dan reset pagination
+      setAppliedFilters({
+          type: typeInput.value,
+          supplierId: typeInput.value === 'IN' ? supplierInput?.value : undefined, 
+          customerId: typeInput.value === 'OUT' ? customerInput?.value : undefined, 
+          startDate: startDateInput || undefined,
+          endDate: endDateInput || undefined
+      });
+
+      // Hook akan otomatis fetch ulang karena appliedFilters berubah.
+      // Kita perlu memastikan pagination reset ke halaman 1.
+      resetPagination(); // Panggil fungsi resetPagination dari hook
+  }
+  
+  // Fungsi untuk memformat data sebelum diekspor
   const getExportData = async () => { 
       try {
+          // Gunakan appliedFilters untuk ekspor (konsisten dengan data yang ditampilkan)
           const params = {
-              type: type.value || undefined,
-              supplierId: type.value === 'IN' ? supplier?.value : undefined,
-              customerId: type.value === 'OUT' ? customer?.value : undefined,
-              startDate: startDate || undefined,
-              endDate: endDate || undefined
+              type: appliedFilters.type || undefined,
+              supplierId: appliedFilters.supplierId || undefined,
+              customerId: appliedFilters.customerId || undefined,
+              startDate: appliedFilters.startDate || undefined,
+              endDate: appliedFilters.endDate || undefined
           };
           
-          // Panggil endpoint export-all untuk mendapatkan SEMUA data
           const response = await axios.get('/api/reports/history/export-all', { params }); 
           const allReports = response.data;
 
@@ -144,117 +205,22 @@ function Reports() {
           }));
       } catch (err) {
           toast.error('Gagal mengambil semua data untuk ekspor.');
-          return []; // Return empty array on failure
+          return [];
       }
   }
 
-  // --- FUNGSI UTAMA FETCH REPORTS (DENGAN FILTER & PAGINATION) ---
-  async function fetchReports(isMounted, page = 1) { 
-    try {
-      if (isMounted) setLoading(true); 
-      
-      const params = {
-          limit: LIMIT_PER_PAGE, // Gunakan limit
-          page: page,            // Gunakan page
-          type: type.value || undefined,
-          // LOGIKA KONDISIONAL UNTUK FILTER IN/OUT
-          supplierId: type.value === 'IN' ? supplier?.value : undefined, 
-          customerId: type.value === 'OUT' ? customer?.value : undefined, 
-          startDate: startDate || undefined,
-          endDate: endDate || undefined
-      };
-
-      const response = await axios.get('/api/reports/history', { params }); 
-      
-      if (isMounted) {
-          // Set data laporan
-          setReports(response.data.reports); 
-          // Set metadata pagination
-          setTotalPages(response.data.totalPages);
-          setTotalCount(response.data.totalCount);
-          setCurrentPage(response.data.currentPage);
-      }
-    } catch (err) {
-      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
-          toast.error('Gagal memuat data laporan transaksi.');
-      }
-      if (isMounted) {
-          setReports([]);
-          setTotalPages(0);
-          setTotalCount(0);
-      }
-    } finally {
-      if (isMounted) setLoading(false); 
-    }
-  }
-
-  // --- Ambil Data Master & Laporan saat Awal ---
-  useEffect(() => {
-    let isMounted = true; 
-
-    async function fetchMasterAndReports() {
-        if (isMounted) setLoading(true);
-        try {
-            // Fetch Supplier dan Customer untuk dropdown filter
-            const [supplierRes, customerRes] = await Promise.all([
-                axios.get('/api/suppliers?page=1&limit=1000'),
-                axios.get('/api/customers?page=1&limit=1000')
-            ]);
-            
-            if (isMounted) { 
-              setSuppliers(supplierRes.data.suppliers);
-              setCustomers(customerRes.data.customers);
-            }
-            
-            // Muat Laporan Awal (Halaman 1)
-            fetchReports(isMounted, 1); 
-
-        } catch (err) {
-            if (isMounted) {
-                toast.error('Gagal memuat data master untuk filter.');
-            }
-        }
-    }
-    fetchMasterAndReports();
-    
-    return () => {
-        isMounted = false; 
-    };
-  }, []);
-
-  // Handler saat tombol 'Tampilkan Laporan' diklik
-  const handleFilterSubmit = (e) => {
-      e.preventDefault();
-      setCurrentPage(1); // Reset ke halaman 1 saat filter baru
-      fetchReports(true, 1); 
-  }
-  
-  // --- Handler Pagination ---
-  const handlePrevPage = () => {
-      if (currentPage > 1) {
-          const newPage = currentPage - 1;
-          setCurrentPage(newPage);
-          fetchReports(true, newPage);
-      }
-  };
-  const handleNextPage = () => {
-      if (currentPage < totalPages) {
-          const newPage = currentPage + 1;
-          setCurrentPage(newPage);
-          fetchReports(true, newPage);
-      }
-  };
-  
-  // Opsi Dropdown Supplier/Customer yang dinamis
-  const partyOptions = (type.value === 'IN' ? suppliers : customers).map(p => ({
+  // Opsi Dropdown Supplier/Customer yang dinamis (gunakan state Input)
+  const partyOptions = (typeInput.value === 'IN' ? suppliers : customers).map(p => ({
       value: p.id,
       label: p.name
   }));
-  const partyPlaceholder = type.value === 'IN' ? 'Pilih Supplier' : 'Pilih Pelanggan';
+  const partyPlaceholder = typeInput.value === 'IN' ? 'Pilih Supplier' : 'Pilih Pelanggan';
+
+  const loading = reportsLoading || masterLoading;
 
   // --- RENDER UTAMA ---
   if (loading) {
-    return <ReportsSkeleton />; // Tampilkan Skeleton saat loading
+    return <ReportsSkeleton />;
   }
 
   return (
@@ -270,11 +236,11 @@ function Reports() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipe Transaksi</label>
                 <Select
                     options={typeOptions}
-                    value={type}
+                    value={typeInput}
                     onChange={(selected) => {
-                        setType(selected);
-                        setSupplier(null); 
-                        setCustomer(null);
+                        setTypeInput(selected);
+                        setSupplierInput(null); 
+                        setCustomerInput(null);
                     }}
                     classNamePrefix="react-select"
                 />
@@ -283,29 +249,29 @@ function Reports() {
             {/* Filter Supplier/Customer Dinamis */}
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {type.value === 'IN' ? 'Filter Supplier' : 'Filter Pelanggan'}
+                    {typeInput.value === 'IN' ? 'Filter Supplier' : 'Filter Pelanggan'}
                 </label>
                 <Select
                     options={partyOptions}
-                    value={type.value === 'IN' ? supplier : customer} 
-                    onChange={type.value === 'IN' ? setSupplier : setCustomer} 
+                    value={typeInput.value === 'IN' ? supplierInput : customerInput} 
+                    onChange={typeInput.value === 'IN' ? setSupplierInput : setCustomerInput} 
                     placeholder={partyPlaceholder}
                     isClearable={true}
                     classNamePrefix="react-select"
-                    isDisabled={!type.value || partyOptions.length === 0} 
+                    isDisabled={!typeInput.value || partyOptions.length === 0} 
                 />
             </div>
             
             {/* Filter Tanggal Mulai */}
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                <input type="date" value={startDateInput} onChange={(e) => setStartDateInput(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
             </div>
 
             {/* Filter Tanggal Akhir */}
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                <input type="date" value={endDateInput} onChange={(e) => setEndDateInput(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md"/>
             </div>
             
             {/* Tombol Aksi */}
@@ -322,14 +288,26 @@ function Reports() {
         <p className='text-sm font-medium text-gray-600'>Total Data: {totalCount}</p> 
         <ExportButton 
             data={getExportData} // Menggunakan fungsi async
-            headers={csvHeaders} 
+            headers={[
+                { label: "Tanggal", key: "transaction_date" },
+                { label: "Tipe", key: "transaction_type" },
+                { label: "Nilai Transaksi (Rp)", key: "transaction_value" }, 
+                { label: "Operator", key: "operator_name" },
+                { label: "Supplier/Customer", key: "party_name" }, 
+                { label: "Produk (SKU)", key: "product_name" },
+                { label: "Jumlah", key: "quantity" },
+                { label: "Status Stok", key: "stock_status_name" }, 
+                { label: "Lokasi", key: "location_name" },
+                { label: "Waktu Proses (Menit)", key: "process_duration_minutes" }, 
+                { label: "Catatan", key: "notes" },
+            ]} 
             filename={`Laporan_WMS_${new Date().toISOString().slice(0, 10)}.csv`}
         >
             Unduh Semua Data (CSV)
         </ExportButton>
       </div>
 
-      {reports.length === 0 && !loading ? (
+      {reports.length === 0 && !reportsLoading ? (
         <p className="text-gray-500 mt-4">Tidak ada data transaksi tercatat dengan filter ini.</p>
       ) : (
         <> 
@@ -383,13 +361,13 @@ function Reports() {
             <div className="flex justify-between items-center mt-6">
                 <p className='text-sm text-gray-600'>Menampilkan {reports.length} dari {totalCount} data.</p>
                 <div className='space-x-4'>
-                    <button onClick={handlePrevPage} disabled={currentPage <= 1 || loading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+                    <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage <= 1 || reportsLoading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
                         &laquo; Sebelumnya
                     </button>
                     <span className="text-sm">
                         Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong>
                     </span>
-                    <button onClick={handleNextPage} disabled={currentPage >= totalPages || loading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
+                    <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage >= totalPages || reportsLoading} className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded disabled:opacity-50">
                         Berikutnya &raquo;
                     </button>
                 </div>
