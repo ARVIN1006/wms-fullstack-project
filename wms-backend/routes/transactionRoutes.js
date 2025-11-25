@@ -29,7 +29,7 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
         location_id,
         quantity,
         stock_status_id,
-        purchase_price,
+        purchase_price, // Diambil dari frontend
         selling_price,
         batch_number,
         expiry_date,
@@ -44,7 +44,7 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
 
       // 2b. Menyimpan detail di transaction_items (Query DI-UPGRADE)
       await client.query(
-        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date, purchase_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         [
           transactionId,
           product_id,
@@ -53,7 +53,8 @@ router.post("/in", auth, authorize(["admin", "staff"]), async (req, res) => {
           stock_status_id,
           batch_number || null,
           expiry_date || null,
-        ] // <-- Simpan Semua Detail
+          purchase_price, // <-- DISIMPAN UNTUK AKURASI AKUNTANSI
+        ] 
       );
 
       // 2c. Update Master Data Produk (Harga Beli Terbaru)
@@ -117,7 +118,7 @@ router.post("/out", auth, authorize(["admin", "staff"]), async (req, res) => {
         location_id,
         quantity,
         stock_status_id,
-        selling_price,
+        selling_price, // Diambil dari frontend
         batch_number,
         expiry_date,
       } = item;
@@ -141,10 +142,16 @@ router.post("/out", auth, authorize(["admin", "staff"]), async (req, res) => {
           `Stok tidak cukup di lokasi asal. Sisa: ${currentStock}, Diminta: ${quantity}`
         );
       }
+      
+      // Ambil Harga Pokok (HPP) dari master produk untuk mencatat COGS
+      const productMaster = await client.query(
+          "SELECT purchase_price FROM products WHERE id = $1", [product_id]
+      );
+      const purchasePriceAtTrans = productMaster.rows[0]?.purchase_price || 0;
 
-      // 2c. Menyimpan detail di transaction_items
+      // 2c. Menyimpan detail di transaction_items (Simpan Selling dan Purchase Price)
       await client.query(
-        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date, selling_price_at_trans, purchase_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         [
           transactionId,
           product_id,
@@ -153,7 +160,9 @@ router.post("/out", auth, authorize(["admin", "staff"]), async (req, res) => {
           stock_status_id,
           batch_number || null,
           expiry_date || null,
-        ] // Simpan Status Stok
+          selling_price, // <-- DISIMPAN UNTUK AKURASI AKUNTANSI
+          purchasePriceAtTrans, // <-- HPP DISIMPAN UNTUK AKURASI COGS
+        ] 
       );
 
       // 2d. Update Stok (Kurangi)

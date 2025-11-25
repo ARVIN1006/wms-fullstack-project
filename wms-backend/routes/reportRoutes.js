@@ -181,11 +181,14 @@ router.get("/history", async (req, res) => {
         ti.id AS item_id,
         t.id, t.date AS transaction_date, t.type AS transaction_type, t.notes,
         t.process_start, t.process_end, p.sku, p.name AS product_name,
-        p.purchase_price, p.selling_price, l.name AS location_name,
-        ti.quantity, ts.name AS stock_status_name,
+        ti.purchase_price_at_trans AS purchase_price, 
+        ti.selling_price_at_trans AS selling_price,   
+        l.name AS location_name,
+        ti.quantity, ti.batch_number, ti.expiry_date, 
+        ts.name AS stock_status_name,
         CASE
-          WHEN t.type = 'IN' THEN (ti.quantity * p.purchase_price)
-          WHEN t.type = 'OUT' THEN (ti.quantity * p.selling_price)
+          WHEN t.type = 'IN' THEN (ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)) -- PERBAIKAN COALESCE
+          WHEN t.type = 'OUT' THEN (ti.quantity * COALESCE(ti.selling_price_at_trans, 0))   -- PERBAIKAN COALESCE
           ELSE 0
         END AS transaction_value,
         s.name AS supplier_name,
@@ -415,7 +418,7 @@ router.get("/customer-order", async (req, res) => {
         c.id AS customer_id,
         c.name AS customer_name,
         COUNT(DISTINCT t.id) AS total_orders, 
-        COALESCE(SUM(ti.quantity * p.selling_price), 0) AS total_revenue
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS total_revenue -- PERBAIKAN COALESCE
       FROM customers c
       
       -- PERBAIKAN: Ganti LEFT JOIN menjadi INNER JOIN
@@ -495,10 +498,10 @@ router.get("/financial", async (req, res) => {
     const profit = await db.query(
       `
       SELECT 
-        COALESCE(SUM(ti.quantity * p.selling_price), 0) AS total_sales_revenue, 
-        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS total_cogs,
-        COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS gross_profit
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS total_sales_revenue, -- PERBAIKAN COALESCE
+        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS total_cogs,     -- PERBAIKAN COALESCE
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - 
+        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS gross_profit
       FROM transactions t
       JOIN transaction_items ti ON t.id = ti.transaction_id
       JOIN products p ON ti.product_id = p.id
@@ -512,10 +515,10 @@ router.get("/financial", async (req, res) => {
       SELECT
         p.sku,
         p.name AS product_name,
-        COALESCE(SUM(ti.quantity * p.selling_price), 0) AS product_revenue,
-        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS product_cogs,
-        COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS product_gross_profit
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS product_revenue, -- PERBAIKAN COALESCE
+        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS product_cogs,     -- PERBAIKAN COALESCE
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - 
+        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS product_gross_profit
       FROM transactions t
       JOIN transaction_items ti ON t.id = ti.transaction_id
       JOIN products p ON ti.product_id = p.id
@@ -529,8 +532,8 @@ router.get("/financial", async (req, res) => {
     const monthlyTrend = await db.query(`
       SELECT
         DATE_TRUNC('month', t.date) AS sale_month,
-        COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-        COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS monthly_profit
+        COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - -- PERBAIKAN COALESCE
+        COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS monthly_profit -- PERBAIKAN COALESCE
       FROM transactions t
       JOIN transaction_items ti ON t.id = ti.transaction_id
       JOIN products p ON ti.product_id = p.id

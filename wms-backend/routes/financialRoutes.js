@@ -44,13 +44,13 @@ router.get("/", async (req, res) => {
     const stockValueResult = await db.query(stockValueQuery);
 
     // --- 2. QUERY LABA KOTOR KESELURUHAN (DIPENGARUHI FILTER) ---
-    // Gunakan queryParams dan whereString untuk filter
+    // PERBAIKAN COALESCE
     const profitQuery = `
         SELECT 
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) AS total_sales_revenue, 
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS total_cogs,
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS gross_profit
+            COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS total_sales_revenue, 
+            COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS total_cogs,     
+            COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - 
+            COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS gross_profit
         FROM transactions t
         JOIN transaction_items ti ON t.id = ti.transaction_id
         JOIN products p ON ti.product_id = p.id
@@ -59,14 +59,15 @@ router.get("/", async (req, res) => {
     const profitResult = await db.query(profitQuery, queryParams);
 
     // --- 3. QUERY PROFITABILITAS PER PRODUK (DIPENGARUHI FILTER) ---
+    // PERBAIKAN COALESCE
     const productProfitQuery = `
         SELECT
             p.sku,
             p.name AS product_name,
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) AS product_revenue,
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS product_cogs,
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS product_gross_profit
+            COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) AS product_revenue, 
+            COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS product_cogs,     
+            COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - 
+            COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS product_gross_profit
         FROM transactions t
         JOIN transaction_items ti ON t.id = ti.transaction_id
         JOIN products p ON ti.product_id = p.id
@@ -77,12 +78,12 @@ router.get("/", async (req, res) => {
     const productProfitResult = await db.query(productProfitQuery, queryParams);
 
     // --- 4. QUERY TREND LABA KOTOR BULANAN (BARU) ---
-    // Menggunakan fungsi date_trunc untuk mengelompokkan per bulan
+    // PERBAIKAN COALESCE
     const monthlyTrendQuery = `
         SELECT
             DATE_TRUNC('month', t.date) AS sale_month,
-            COALESCE(SUM(ti.quantity * p.selling_price), 0) - 
-            COALESCE(SUM(ti.quantity * p.purchase_price), 0) AS monthly_profit
+            COALESCE(SUM(ti.quantity * COALESCE(ti.selling_price_at_trans, 0)), 0) - 
+            COALESCE(SUM(ti.quantity * COALESCE(ti.purchase_price_at_trans, 0)), 0) AS monthly_profit
         FROM transactions t
         JOIN transaction_items ti ON t.id = ti.transaction_id
         JOIN products p ON ti.product_id = p.id
@@ -97,10 +98,10 @@ router.get("/", async (req, res) => {
       valuation: stockValueResult.rows[0],
       profit: profitResult.rows[0],
       profitByProduct: productProfitResult.rows,
-      monthlyTrend: monthlyTrendResult.rows, // <-- BARU: Data untuk Line Chart
+      monthlyTrend: monthlyTrendResult.rows,
     });
   } catch (err) {
-    console.error(err.message);
+    console.error("ERROR IN /financial:", err.message);
     res.status(500).send("Server Error saat mengambil laporan keuangan.");
   }
 });

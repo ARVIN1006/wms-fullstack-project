@@ -38,7 +38,7 @@ function LocationList() {
     fetchLocations(isMounted); // Kirim flag ke fungsi fetch
 
     return () => {
-      isMounted = false; // Cleanup function
+      isMounted = false; // Cleanup function: set flag ke false saat unmount
     };
   }, []);
 
@@ -98,7 +98,7 @@ function LocationList() {
     }
   };
 
-  const UtilizationBar = ({ percentage }) => {
+const UtilizationBar = ({ percentage }) => {
       const perc = Math.min(Math.max(percentage, 0), 100); // Batasi 0-100
       let bgColor = 'bg-green-500';
       if (perc > 75) bgColor = 'bg-yellow-500';

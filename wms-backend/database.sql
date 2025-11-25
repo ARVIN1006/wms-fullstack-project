@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- UPGRADE Tabel Transaction Items (Tambahkan Batch & Expiry)
+-- UPGRADE Tabel Transaction Items (Tambahkan Harga Transaksi)
 CREATE TABLE IF NOT EXISTS transaction_items (
     id SERIAL PRIMARY KEY,
     transaction_id INTEGER REFERENCES transactions(id) ON DELETE CASCADE,
@@ -110,7 +110,9 @@ CREATE TABLE IF NOT EXISTS transaction_items (
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     stock_status_id INTEGER REFERENCES stock_statuses(id) ON DELETE RESTRICT,
     batch_number VARCHAR(100), 
-    expiry_date DATE           
+    expiry_date DATE,
+    purchase_price_at_trans NUMERIC(10, 2) DEFAULT 0.00, -- BARU
+    selling_price_at_trans NUMERIC(10, 2) DEFAULT 0.00    -- BARU
 );
 
 -- Tabel Stock Levels (Merujuk Products, Locations)

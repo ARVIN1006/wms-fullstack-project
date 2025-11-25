@@ -49,7 +49,8 @@ function Reports() {
   
   // Fungsi untuk memformat data sebelum diekspor
   const getExportData = () => {
-      return reports.map(item => ({
+      // PERBAIKAN TYPE ERROR: Tambah safe check (reports || [])
+      return (reports || []).map(item => ({
           ...item,
           transaction_date: new Date(item.transaction_date).toLocaleString('id-ID'),
           transaction_type: item.transaction_type === 'IN' ? 'MASUK' : 'KELUAR',
@@ -60,9 +61,9 @@ function Reports() {
   }
 
   // --- FUNGSI UTAMA FETCH REPORTS (DENGAN FILTER) ---
-  async function fetchReports(isMounted) { // BARU: Terima flag isMounted
+  async function fetchReports(isMounted) { 
     try {
-      if (isMounted) setLoading(true); // Cek sebelum set loading
+      if (isMounted) setLoading(true); 
       
       const params = {
           limit: undefined, 
@@ -74,19 +75,20 @@ function Reports() {
       };
 
       const response = await axios.get('/api/reports/history', { params }); 
-      if (isMounted) setReports(response.data); // Cek sebelum set state
+      // PERBAIKAN UTAMA: Ambil HANYA array reports dari objek data
+      if (isMounted) setReports(response.data.reports); 
     } catch (err) {
       if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
           toast.error('Gagal memuat data laporan transaksi.');
       }
     } finally {
-      if (isMounted) setLoading(false); // Cek sebelum set loading
+      if (isMounted) setLoading(false); 
     }
   }
 
   // --- Ambil Data Master & Laporan saat Awal ---
   useEffect(() => {
-    let isMounted = true; // BARU: Flag untuk cleanup
+    let isMounted = true; // Flag untuk cleanup
 
     async function fetchMasterAndReports() {
         if (isMounted) setLoading(true);
@@ -108,7 +110,6 @@ function Reports() {
         } catch (err) {
             if (isMounted) {
                 toast.error('Gagal memuat data master untuk filter.');
-                setLoading(false);
             }
         }
     }
@@ -224,7 +225,7 @@ function Reports() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {reports.map((item) => (
+              {(reports || []).map((item) => (
                 <tr key={item.item_id}> 
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{new Date(item.transaction_date).toLocaleString('id-ID')}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

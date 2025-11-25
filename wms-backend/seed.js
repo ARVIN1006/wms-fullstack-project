@@ -114,19 +114,25 @@ async function superSeeder() {
       const sku = isElectronic
         ? `ELEC-${i.toString().padStart(3, "0")}`
         : `OFFICE-${(i - 25).toString().padStart(3, "0")}`;
-      const name = isElectronic
+      
+      const name = isElectronic // <-- VARIABEL 'name' YANG HILANG, KINI DITAMBAHKAN
         ? `Headset Gaming V${i}`
         : `Kertas A4 HVS ${i - 25} rim`;
-      const price = isElectronic ? 150000 + i * 500 : 25000 + i * 100;
+
+      const price = 150000 + i * 500;
       const selling = price * 1.35;
       const catId = isElectronic ? categoryId1 : categoryId2;
       const suppId = i % 2 === 0 ? supplierId1 : supplierId2;
       const volume = isElectronic ? 0.05 : 0.02;
       const res = await client.query(
-        "INSERT INTO products (sku, name, unit, category_id, purchase_price, selling_price, main_supplier_id, volume_m3) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
-        [sku, name, "pcs", catId, price, selling, suppId, volume]
+        "INSERT INTO products (sku, name, unit, category_id, purchase_price, selling_price, main_supplier_id, volume_m3) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, purchase_price, selling_price", // Ambil harga
+        [sku, name, "pcs", catId, price, selling, suppId, volume] // 'name' kini didefinisikan
       );
-      productIds.push(res.rows[0].id);
+      productIds.push({
+          id: res.rows[0].id,
+          purchase_price: res.rows[0].purchase_price,
+          selling_price: res.rows[0].selling_price
+      });
     }
 
     // --- SEED TRANSACTIONS (100+ TRANSAKSI ACER) ---
@@ -150,7 +156,11 @@ async function superSeeder() {
       const durationMin = Math.floor(Math.random() * 10) + 2;
       const operatorId = operators[Math.floor(Math.random() * 3)];
       const locationId = i % 2 === 0 ? locIdA1 : locIdB2;
-      const productId = productIds[Math.floor(Math.random() * 20)];
+      
+      const productIndex = Math.floor(Math.random() * 20);
+      const product = productIds[productIndex]; // Ambil objek produk
+      const productId = product.id;
+      
       const qty = Math.floor(Math.random() * 15) + 1;
 
       const supplierId =
@@ -186,10 +196,18 @@ async function superSeeder() {
         }
       }
 
-      // Catat Item
+      // Catat Item (BARU: Tambahkan kolom harga)
       await client.query(
-        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id) VALUES ($1, $2, $3, $4, $5)",
-        [transId, productId, locationId, qty, stockStatus]
+        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, purchase_price_at_trans, selling_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        [
+          transId,
+          productId,
+          locationId,
+          qty,
+          stockStatus,
+          product.purchase_price, // Nilai HPP saat ini
+          product.selling_price, // Nilai Jual saat ini
+        ]
       );
 
       // Update Stock Levels
@@ -204,10 +222,11 @@ async function superSeeder() {
 
     // 11. SEED MOVEMENT (5 Perpindahan)
     console.log("Membuat 5 perpindahan barang...");
+    const firstProduct = productIds[0];
     await client.query(
       "INSERT INTO movements (product_id, from_location_id, to_location_id, quantity, reason, operator_id) VALUES ($1, $2, $3, $4, $5, $6)",
       [
-        productIds[0],
+        firstProduct.id,
         locIdA1,
         locIdQA,
         5,
@@ -218,11 +237,11 @@ async function superSeeder() {
     // Update stok untuk perpindahan
     await client.query(
       "UPDATE stock_levels SET quantity = quantity - 5 WHERE product_id = $1 AND location_id = $2",
-      [productIds[0], locIdA1]
+      [firstProduct.id, locIdA1]
     );
     await client.query(
       "INSERT INTO stock_levels (product_id, location_id, quantity) VALUES ($1, $2, $3) ON CONFLICT (product_id, location_id) DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity",
-      [productIds[0], locIdQA, 5]
+      [firstProduct.id, locIdQA, 5]
     );
 
     // 12. SELESAI

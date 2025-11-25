@@ -44,6 +44,7 @@ function FinancialReport() {
     }
   }
 
+  // Perbaikan useEffect dengan Cleanup Function
   useEffect(() => {
     let isMounted = true; // BARU: Flag untuk cleanup
     fetchFinancialReport(isMounted); // Kirim flag ke fungsi fetch
@@ -51,18 +52,19 @@ function FinancialReport() {
     return () => {
         isMounted = false; // Cleanup function
     };
-  }, []); 
+  }, [startDate, endDate]); // Refresh saat filter tanggal berubah
+
   
   // Handler Submit Filter
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchFinancialReport(true); // Re-fetch
+      // Perubahan state startDate/endDate akan otomatis memicu useEffect
   }
 
   // --- LOGIKA GRAFIK ---
   const getPieChartData = () => {
     // Filter hanya yang laba kotornya positif dan ambil 5 teratas
-    const topProducts = reportData.profitByProduct
+    const topProducts = (reportData.profitByProduct || []) // Safe check
         .filter(item => item.product_gross_profit > 0) 
         .slice(0, 5);
         
@@ -94,12 +96,12 @@ function FinancialReport() {
   const getLineChartData = () => {
     // Data trend bulanan
     return {
-        labels: reportData.monthlyTrend.map(item => 
+        labels: (reportData.monthlyTrend || []).map(item => 
             new Date(item.sale_month).toLocaleString('id-ID', { year: 'numeric', month: 'short' })
         ),
         datasets: [{
             label: 'Laba Kotor Bulanan (Rp)',
-            data: reportData.monthlyTrend.map(item => parseFloat(item.monthly_profit)),
+            data: (reportData.monthlyTrend || []).map(item => parseFloat(item.monthly_profit)),
             fill: true,
             backgroundColor: 'rgba(59, 130, 246, 0.2)',
             borderColor: 'rgba(59, 130, 246, 1)',
@@ -190,7 +192,7 @@ function FinancialReport() {
 
         {/* KOTAK KANAN: PIE CHART (PERSENTASE PROFIT) */}
         <div className="bg-white p-6 shadow-lg rounded-lg flex items-center justify-center">
-            {reportData.profitByProduct.length > 0 ? (
+            {(reportData.profitByProduct || []).length > 0 ? (
                 <div className="w-full max-w-md">
                     <Pie data={getPieChartData()} options={pieOptions} />
                 </div>
@@ -213,14 +215,14 @@ function FinancialReport() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {profitByProduct.length === 0 ? (
+            {(profitByProduct || []).length === 0 ? (
                 <tr>
                     <td colSpan="4" className="px-6 py-4 text-center text-gray-500">
                         Tidak ada data penjualan tercatat.
                     </td>
                 </tr>
             ) : (
-                profitByProduct.map((item, index) => (
+                (profitByProduct || []).map((item, index) => (
                     <tr key={item.sku} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{item.product_name} ({item.sku})</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-700">

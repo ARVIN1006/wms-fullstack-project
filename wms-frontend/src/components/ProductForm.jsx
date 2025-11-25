@@ -29,29 +29,39 @@ function ProductForm({ onSave, onClose, productToEdit }) {
 
   // --- Ambil Data Master: Lokasi & Supplier ---
   useEffect(() => {
+    let isMounted = true; // BARU: Flag untuk cleanup
+
     async function fetchMasterData() {
         try {
             const [locationRes, supplierRes] = await Promise.all([
                 axios.get('/api/locations'),
                 axios.get('/api/suppliers?page=1&limit=1000') 
             ]);
-            setLocations(locationRes.data);
-            setSuppliers(supplierRes.data.suppliers);
-            setLoadingMaster(false);
+            if (isMounted) { // Cek sebelum set state
+                setLocations(locationRes.data);
+                setSuppliers(supplierRes.data.suppliers);
+                setLoadingMaster(false);
+            }
         } catch (error) {
-            toast.error("Gagal memuat data master untuk form.");
-            setLoadingMaster(false);
+            if (isMounted) { // Cek sebelum set state
+                toast.error("Gagal memuat data master untuk form.");
+                setLoadingMaster(false);
+            }
         }
     }
     fetchMasterData();
+    
+    return () => { // Fungsi Cleanup
+        isMounted = false;
+    };
   }, []);
 
   // --- Efek Mengisi Form Saat Edit ---
   useEffect(() => {
     if (productToEdit) {
       setIsEditing(true);
-      setName(productToEdit.name);
       setSku(productToEdit.sku);
+      setName(productToEdit.name);
       setDescription(productToEdit.description || '');
       setUnit(productToEdit.unit);
       setPurchasePrice(productToEdit.purchase_price || 0); 
@@ -59,7 +69,8 @@ function ProductForm({ onSave, onClose, productToEdit }) {
       
       // Mengisi Dropdown Supplier Utama
       if (productToEdit.main_supplier_id) {
-          const defaultSupplier = supplierOptions.find(s => s.value === productToEdit.main_supplier_id);
+          // Harus menggunakan suppliers state yang sudah terisi
+          const defaultSupplier = suppliers.find(s => s.value === productToEdit.main_supplier_id);
           setMainSupplier(defaultSupplier || null);
       } else {
           setMainSupplier(null);
@@ -95,8 +106,8 @@ function ProductForm({ onSave, onClose, productToEdit }) {
       name, 
       description, 
       unit,
-      purchase_price: purchasePrice, 
-      selling_price: sellingPrice,
+      purchase_price: parseFloat(purchasePrice), // Pastikan format number
+      selling_price: parseFloat(sellingPrice),  // Pastikan format number
       main_supplier_id: mainSupplier?.value || null, // KIRIM ID SUPPLIER
       
       // Kirim Stok Awal hanya jika mode CREATE

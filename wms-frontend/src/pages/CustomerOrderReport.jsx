@@ -19,14 +19,16 @@ function CustomerOrderReport() {
   const [endDate, setEndDate] = useState('');
   
   // --- FUNGSI FETCH UTAMA ---
-  async function fetchReports(isFilterSubmit = false) {
+  async function fetchReports(isFilterSubmit = false, isMounted) { // BARU: Terima isMounted
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true);
       
       // Validasi: Jika ini adalah submit filter, tanggal wajib diisi
       if (isFilterSubmit && (!startDate || !endDate)) {
-          toast.error('Harap isi Tanggal Mulai dan Sampai Tanggal untuk filter.');
-          setLoading(false);
+          if (isMounted) {
+            toast.error('Harap isi Tanggal Mulai dan Sampai Tanggal untuk filter.');
+            setLoading(false);
+          }
           return;
       }
       
@@ -36,26 +38,30 @@ function CustomerOrderReport() {
       };
       
       const response = await axios.get('/api/reports/customer-order', { params });
-      setReportData(response.data);
+      if (isMounted) setReportData(response.data);
     } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
+      if (isMounted && err.response?.status !== 401 && err.response?.status !== 403) {
         toast.error('Gagal memuat laporan Customer & Order.');
       }
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   }
 
-  // PERBAIKAN: Hapus [startDate, endDate] dari dependency array.
-  // useEffect ini sekarang HANYA berjalan sekali saat halaman dibuka.
+  // PERBAIKAN: Gunakan Cleanup Function di useEffect
   useEffect(() => {
-    fetchReports(false); // Panggil tanpa flag filter
+    let isMounted = true; // BARU: Flag untuk cleanup
+    fetchReports(false, isMounted); // Panggil tanpa flag filter, kirim isMounted
+    
+    return () => { // Cleanup function
+      isMounted = false;
+    };
   }, []); 
 
   // Handler ini sekarang menjadi satu-satunya cara memanggil fetchReports DENGAN filter
   const handleFilterSubmit = (e) => {
       e.preventDefault();
-      fetchReports(true); // Panggil dengan flag filter = true
+      fetchReports(true, true); // Panggil dengan flag filter = true
   }
 
   if (loading) {
