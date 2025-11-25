@@ -8,13 +8,21 @@ import Select from 'react-select';
 
 const LIMIT_PER_PAGE = 10;
 
+// Helper untuk format mata uang
+const formatCurrency = (amount) => {
+  return `Rp ${parseFloat(amount || 0).toLocaleString('id-ID', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+};
+
 // --- KOMPONEN SKELETON BARU ---
 const ProductListSkeleton = ({ isAdmin }) => {
     // Skeleton untuk baris tabel
     const TableRowSkeleton = () => (
         <tr className="border-b border-gray-200">
-            {/* 10 Kolom untuk admin, 8 untuk staff (tanpa harga beli & nilai stok) */}
-            {Array.from({ length: isAdmin ? 10 : 8 }).map((_, i) => (
+            {/* 11 Kolom: SKU, Name, Category, Unit, Supplier, Main Loc, P. Price, S. Price, Total Stock, Total Value, Aksi */}
+            {Array.from({ length: 11 }).map((_, i) => (
                 <td key={i} className="px-6 py-4">
                     <div className="h-4 bg-gray-300 rounded skeleton-shimmer"></div>
                 </td>
@@ -62,6 +70,7 @@ const ProductListSkeleton = ({ isAdmin }) => {
 };
 // --- END KOMPONEN SKELETON ---
 
+
 function ProductList() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]); 
@@ -82,7 +91,7 @@ function ProductList() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('DESC');
   
-  // State untuk menyimpan detail stok yang baru diambil
+  // State untuk menyimpan detail stok yang baru diambil (tetap diperlukan untuk "Lihat Stok Detail")
   const [productStockDetails, setProductStockDetails] = useState({}); 
 
   // Role dari Context
@@ -297,17 +306,22 @@ function ProductList() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Supplier Utama
                   </th>
+                  {/* BARU: Kolom Lokasi Utama */}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Lokasi Utama
+                  </th>
+                  {/* END BARU */}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Harga Beli
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Harga Jual
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Stok Detail
+                  <th onClick={() => handleSortClick('total_quantity_in_stock')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                    Total Stok {renderSortIcon('total_quantity_in_stock')}
                   </th>
-                  <th onClick={() => handleSortClick('created_at')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
-                    Dibuat {renderSortIcon('created_at')}
+                  <th onClick={() => handleSortClick('total_value_asset')} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                    Total Nilai Stok (HPP) {renderSortIcon('total_value_asset')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Aksi
@@ -333,26 +347,34 @@ function ProductList() {
                         {product.supplier_name || '-'}
                       </td>
                       
-                      {/* Data Harga (dengan safety check || 0) */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-700">
-                        Rp {parseFloat(product.purchase_price || 0).toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-700">
-                        Rp {parseFloat(product.selling_price || 0).toLocaleString('id-ID')}
+                      {/* BARU: Lokasi Utama */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-700">
+                        {product.main_location_name || '-'}
                       </td>
                       
-                      {/* Tombol Detail Stok */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button 
-                              onClick={() => toggleStockDetail(product.id)}
-                              className="text-xs text-blue-600 hover:text-blue-800 underline font-semibold"
-                          >
-                              {productStockDetails[product.id] ? 'Tutup Detail' : 'Lihat Stok'}
-                          </button>
+                      {/* Data Harga (dengan safety check || 0) */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-700">
+                        {formatCurrency(product.purchase_price || 0)}
                       </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(product.created_at).toLocaleDateString()}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-700">
+                        {formatCurrency(product.selling_price || 0)}
+                      </td>
+                      
+                      {/* Total Stok */}
+                      <td className="px-6 py-4 whitespace-nowrap text-lg font-bold">
+                        {product.total_quantity_in_stock}
+                        {/* Tombol Detail Stok di bawah total stok */}
+                        <button 
+                            onClick={() => toggleStockDetail(product.id)}
+                            className="text-xs block mt-1 text-blue-600 hover:text-blue-800 underline font-semibold"
+                        >
+                            {productStockDetails[product.id] ? 'Tutup Detail' : 'Lihat Lokasi'}
+                        </button>
+                      </td>
+                      
+                      {/* Total Nilai Stok (HPP) */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-purple-700">
+                         {formatCurrency(product.total_value_asset || 0)}
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
@@ -382,8 +404,8 @@ function ProductList() {
                     {/* BARIS DETAIL STOK (Hanya muncul jika diklik) */}
                     {productStockDetails[product.id] && (
                       <tr className="bg-blue-50">
-                        {/* Colspan 10 untuk menutupi lebar tabel */}
-                        <td colSpan="10" className="px-6 py-2"> 
+                        {/* Colspan 11 untuk menutupi lebar tabel */}
+                        <td colSpan="11" className="px-6 py-2"> 
                           <p className="font-semibold text-sm mb-1 text-gray-700">Stok Aktif per Lokasi:</p>
                           {productStockDetails[product.id].length === 0 ? (
                               <p className="text-xs text-red-500">Stok barang ini 0.</p>

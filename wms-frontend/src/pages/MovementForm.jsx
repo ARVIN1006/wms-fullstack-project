@@ -96,14 +96,57 @@ function MovementForm() {
         return () => { isMounted = false; };
     }, []);
 
+    // --- BARU: Efek untuk meng-AUTO-FILL LOKASI ASAL TERBAIK saat Produk Dipilih ---
+    useEffect(() => {
+        let isMounted = true;
+        // Hanya auto-fill jika produk dipilih dan lokasi asal BELUM dipilih
+        // locations.length > 0 memastikan master data sudah dimuat
+        if (selectedProduct && !selectedFromLocation && locations.length > 0) {
+            async function autoFillLocation() {
+                try {
+                    // Call API without locationId to get the location with the maximum stock (fallback logic)
+                    const res = await axios.get(
+                        `/api/products/${selectedProduct.value}/main-stock`
+                    );
+                    const info = res.data;
+                    
+                    // Pastikan ada stok yang ditemukan di lokasi utama
+                    if (isMounted && info.quantity > 0) {
+                        // Cari opsi yang cocok dari daftar lokasi master
+                        const defaultLocation = locations.map(l => ({ value: l.id, label: l.name }))
+                                                        .find(l => l.value === info.location_id);
+                        
+                        if (defaultLocation) {
+                             // Set lokasi asal otomatis
+                             setValue('fromLocation', defaultLocation, { shouldValidate: true });
+                             // Set quantity ke 1 (atau biarkan default 1)
+                        }
+                    }
+                } catch (err) {
+                    // Silently fail if product has no stock or API error
+                }
+            }
+            autoFillLocation();
+        }
+        
+        // Ketika produk dikosongkan, kosongkan juga lokasi asal
+        if (!selectedProduct) {
+             setValue('fromLocation', null, { shouldValidate: true });
+        }
+        
+        return () => { isMounted = false; };
+    }, [selectedProduct, selectedFromLocation, locations, setValue]); 
+
+
     // --- Efek untuk mengecek stok yang tersedia (REAL-TIME) ---
-  const checkStock = useCallback(async () => {
+    const checkStock = useCallback(async () => {
         if (selectedProduct && selectedFromLocation) {
             try {
                 const res = await axios.get(
+                    // Gunakan locationId untuk mendapatkan stok spesifik dari lokasi yang dipilih/di-autofill
                     `/api/products/${selectedProduct.value}/main-stock?locationId=${selectedFromLocation.value}`
                 );
-                // FIX KRITIS: Mengubah res.data.total_quantity menjadi res.data.quantity
+                // Backend sekarang mengirim 'quantity'
                 const currentStock = res.data.quantity || 0; 
                 setAvailableStock(currentStock); 
 

@@ -201,17 +201,18 @@ function TransactionForm() {
     }, [watchedItems, itemStockInfo, transactionType, clearErrors, setError, loadingMaster]);
 
 
-    // --- Fetch Master Data Awal ---
+    // --- Fetch Master Data Awal (DIPERBAIKI) ---
     useEffect(() => {
         let isMounted = true;
         async function fetchMasterData() {
             try {
+                // BARU: Tambahkan categoryRes ke Promise.all
                 const [locRes, statusRes, suppRes, custRes, catRes] = await Promise.all([
                     axios.get('/api/locations'),
                     axios.get('/api/reports/stock-statuses'),
                     axios.get('/api/suppliers?page=1&limit=1000'),
                     axios.get('/api/customers?page=1&limit=1000'),
-                    axios.get('/api/products/categories'), // BARU: Fetch Kategori
+                    axios.get('/api/products/categories'), 
                 ]);
 
                 if (isMounted) {
@@ -284,12 +285,13 @@ function TransactionForm() {
         }
     };
 
-    // --- Fungsi pencarian produk untuk AsyncSelect (FILTERED) ---
+    // --- Fungsi pencarian produk untuk AsyncSelect (DIPERBAIKI DENGAN FILTER KATEGORI) ---
     const loadProductOptions = async (inputValue) => {
-        const categoryId = getValues('categoryFilter')?.value || ''; // BARU: Ambil nilai filter kategori
+        const categoryId = getValues('categoryFilter')?.value || ''; // Ambil nilai filter kategori
         try {
+            // KIRIM categoryId ke API products
             const response = await axios.get(
-                `/api/products?page=1&limit=20&search=${inputValue}&categoryId=${categoryId}` // BARU: Kirim categoryId ke API
+                `/api/products?page=1&limit=20&search=${inputValue}&categoryId=${categoryId}` 
             );
             return response.data.products.map((p) => ({
                 value: p.id,
@@ -380,13 +382,14 @@ function TransactionForm() {
                     </div>
                 </div>
 
-                {/* --- FILTER KATEGORI (BARU) --- */}
+                {/* --- FILTER KATEGORI (KONTROL PRODUK) --- */}
                 <div className='mb-6 p-4 border rounded-lg bg-gray-50'>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Filter Produk Berdasarkan Kategori</label>
                     <Select
                         options={categoryOptions}
                         value={selectedCategoryFilter}
-                        onChange={(option) => setValue('categoryFilter', option)}
+                        // Saat filter kategori berubah, item yang sudah ada TIDAK perlu direset
+                        onChange={(option) => setValue('categoryFilter', option)} 
                         placeholder="Semua Kategori"
                         isClearable={true}
                         classNamePrefix="react-select"

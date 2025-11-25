@@ -17,6 +17,8 @@ const validationSchema = yup.object().shape({
     purchasePrice: yup.number().typeError('Harga Beli harus angka.').min(0, 'Harga Beli tidak boleh negatif.').required('Harga Beli wajib diisi.'),
     sellingPrice: yup.number().typeError('Harga Jual harus angka.').min(0, 'Harga Jual tidak boleh negatif.').required('Harga Jual wajib diisi.'),
     mainSupplier: yup.object().nullable(),
+    // BARU: Kategori
+    category: yup.object().nullable(), 
     // Stok Awal: Transform string kosong menjadi 0, wajib >= 0
     initialStockQty: yup.number().transform((value, originalValue) => (originalValue === "" ? 0 : value)).min(0, 'Stok awal tidak boleh negatif.').required(),
     // Lokasi Awal wajib diisi hanya jika initialStockQty > 0
@@ -31,6 +33,7 @@ function ProductForm({ onSave, onClose, productToEdit }) {
   // State Master Data
   const [locations, setLocations] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [categories, setCategories] = useState([]); // BARU: State Kategori
   const [loadingMaster, setLoadingMaster] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -45,6 +48,7 @@ function ProductForm({ onSave, onClose, productToEdit }) {
         purchasePrice: 0,
         sellingPrice: 0,
         mainSupplier: null,
+        category: null, // BARU: Default Category
         initialStockQty: 0,
         initialLocation: null,
     }
@@ -53,24 +57,28 @@ function ProductForm({ onSave, onClose, productToEdit }) {
   // Watch fields yang tidak menggunakan register (Select components)
   const initialLocation = watch('initialLocation');
   const mainSupplier = watch('mainSupplier');
+  const selectedCategory = watch('category'); // BARU: Watch Category
   
   // Ambil data untuk opsi Select
   const locationOptions = locations.map(l => ({ value: l.id, label: l.name }));
   const supplierOptions = suppliers.map(s => ({ value: s.id, label: s.name }));
+  const categoryOptions = categories.map(c => ({ value: c.id, label: c.name })); // BARU: Category Options
 
-  // --- Ambil Data Master: Lokasi & Supplier ---
+  // --- Ambil Data Master: Lokasi, Supplier, dan Kategori ---
   useEffect(() => {
     let isMounted = true; 
 
     async function fetchMasterData() {
         try {
-            const [locationRes, supplierRes] = await Promise.all([
+            const [locationRes, supplierRes, categoryRes] = await Promise.all([
                 axios.get('/api/locations'),
-                axios.get('/api/suppliers?page=1&limit=1000') 
+                axios.get('/api/suppliers?page=1&limit=1000'),
+                axios.get('/api/products/categories') // BARU: Fetch Kategori
             ]);
             if (isMounted) { 
                 setLocations(locationRes.data);
                 setSuppliers(supplierRes.data.suppliers);
+                setCategories(categoryRes.data); // BARU: Set Kategori
                 setLoadingMaster(false);
             }
         } catch (error) {
@@ -87,9 +95,10 @@ function ProductForm({ onSave, onClose, productToEdit }) {
     };
   }, []);
 
-  // --- Efek Mengisi Form Saat Edit (FIXED DEPENDENCY) ---
+  // --- Efek Mengisi Form Saat Edit (DIPERBAIKI) ---
   useEffect(() => {
-    if (productToEdit) {
+    // Pastikan master data sudah dimuat sebelum mencoba mencocokkan ID
+    if (productToEdit && !loadingMaster) {
       setIsEditing(true);
       
       // Set RHF values (safe)
@@ -101,22 +110,29 @@ function ProductForm({ onSave, onClose, productToEdit }) {
       setValue('sellingPrice', parseFloat(productToEdit.selling_price || 0));
       
       // Mengisi Dropdown Supplier Utama
-      if (productToEdit.main_supplier_id && suppliers.length > 0) {
-          // Cari opsi supplier dari array suppliers (yang sudah stabil)
-          const defaultSupplier = suppliers.map(s => ({ value: s.id, label: s.name }))
-                                         .find(s => s.value === productToEdit.main_supplier_id);
+      if (productToEdit.main_supplier_id) {
+          const defaultSupplier = supplierOptions.find(s => s.value === productToEdit.main_supplier_id);
           setValue('mainSupplier', defaultSupplier || null);
       } else {
           setValue('mainSupplier', null);
+      }
+      
+      // BARU: Mengisi Dropdown Kategori
+      if (productToEdit.category_id) {
+          // Menggunakan productToEdit.category_id untuk mencocokkan ID kategori
+          const defaultCategory = categoryOptions.find(c => c.value === productToEdit.category_id);
+          setValue('category', defaultCategory || null);
+      } else {
+          setValue('category', null);
       }
       
       // Reset initial stock fields
       setValue('initialStockQty', 0);
       setValue('initialLocation', null);
       
-    } else {
+    } else if (!productToEdit) {
         setIsEditing(false);
-        // Reset RHF ke default values jika tidak editing
+        // Reset RHF ke default values saat mode Add
         setValue('sku', '');
         setValue('name', '');
         setValue('description', '');
@@ -124,12 +140,12 @@ function ProductForm({ onSave, onClose, productToEdit }) {
         setValue('purchasePrice', 0);
         setValue('sellingPrice', 0);
         setValue('mainSupplier', null);
+        setValue('category', null); // BARU: Reset Category
         setValue('initialStockQty', 0);
         setValue('initialLocation', null);
     }
-  // FIX UTAMA: Menghapus 'supplierOptions' dari dependency array.
-  // Hanya mempertahankan productToEdit, suppliers (state), dan setValue (stable hook function).
-  }, [productToEdit, suppliers, setValue]); 
+  // Menambahkan loadingMaster, supplierOptions, dan categoryOptions ke dependency
+  }, [productToEdit, loadingMaster, setValue, supplierOptions, categoryOptions]); 
 
   // Fungsi saat tombol Simpan diklik (Menggunakan RHF handleSubmit)
   const onSubmit = (data) => {
@@ -144,6 +160,7 @@ function ProductForm({ onSave, onClose, productToEdit }) {
       purchase_price: parseFloat(data.purchasePrice), 
       selling_price: parseFloat(data.sellingPrice),
       main_supplier_id: data.mainSupplier?.value || null, 
+      category_id: data.category?.value || null, // BARU: Kirim Category ID
       
       // Kirim Stok Awal hanya jika mode CREATE
       initial_stock_qty: isEditing ? 0 : data.initialStockQty, 
@@ -190,6 +207,21 @@ function ProductForm({ onSave, onClose, productToEdit }) {
             <input type="text" {...register('name')} className={`w-full px-3 py-2 border rounded-md shadow-sm ${errors.name ? 'border-red-500' : 'border-gray-300'}`} />
             <ErrorMessage error={errors.name} />
           </div>
+          
+          {/* BARU: Kategori Produk */}
+          <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Kategori (Opsional)</label>
+              <Select
+                  options={categoryOptions}
+                  value={selectedCategory}
+                  onChange={(option) => setValue('category', option)} 
+                  classNamePrefix="react-select"
+                  placeholder="Pilih Kategori..."
+                  isClearable={true}
+              />
+              <ErrorMessage error={errors.category} />
+          </div>
+
 
           {/* Satuan */}
           <div className="mb-4">
@@ -218,6 +250,7 @@ function ProductForm({ onSave, onClose, productToEdit }) {
                   className="w-full mt-1"
                   classNamePrefix="react-select"
                   placeholder="Pilih Supplier Utama..."
+                  isClearable={true}
               />
           </div>
           
@@ -266,6 +299,7 @@ function ProductForm({ onSave, onClose, productToEdit }) {
                               onChange={(option) => setValue('initialLocation', option)} 
                               className={`w-full mt-1 ${errors.initialLocation ? 'border-red-500' : ''}`}
                               classNamePrefix="react-select"
+                              isClearable={true}
                           />
                           <ErrorMessage error={errors.initialLocation} />
                       </div>

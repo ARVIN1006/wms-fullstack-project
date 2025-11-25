@@ -27,14 +27,14 @@ router.get("/categories", auth, authorize(["admin", "staff"]), async (req, res) 
   }
 });
 
-// GET /api/products - DENGAN FILTER KATEGORI, JOIN SUPPLIER, SEARCH, PAGINATION, DAN SORTING
+// GET /api/products - DENGAN AGGREGATE STOK, FILTER KATEGORI, SEARCH, PAGINATION, DAN SORTING
 router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
   try {
     const {
       search = "",
       page = 1,
       limit = 10,
-      categoryId, // BARU: Terima filter Category ID
+      categoryId, 
       sortBy = "created_at",
       sortOrder = "DESC",
     } = req.query;
@@ -49,7 +49,7 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
       : "created_at";
     const order = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
 
-    // 1. Bangun query pencarian jika ada
+    // 1. Bangun query pencarian dan filter
     if (search) {
       paramIndex++;
       queryParams.push(`%${search}%`);
@@ -58,7 +58,6 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
       );
     }
     
-    // BARU: Tambahkan filter Category ID
     if (categoryId) {
         paramIndex++;
         queryParams.push(categoryId);
@@ -75,7 +74,7 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
     const totalCount = parseInt(countResult.rows[0].count, 10);
     const totalPages = Math.ceil(totalCount / parseInt(limit));
 
-    // 3. Query B: Ambil data (Melakukan JOIN ke Suppliers)
+    // 3. Query B: Ambil data (Melakukan JOIN ke Suppliers, Categories, Stock Levels, dan MAIN LOCATION)
 
     const limitIndex = queryParams.length + 1;
     const offsetIndex = queryParams.length + 2;
@@ -87,11 +86,29 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
       SELECT 
         p.*, 
         s.name AS supplier_name,
-        c.name AS category_name -- JOIN untuk nama kategori
+        c.name AS category_name, 
+        COALESCE(SUM(sl.quantity), 0) AS total_quantity_in_stock,
+        COALESCE(SUM(sl.quantity * sl.average_cost), 0) AS total_value_asset,
+        
+        -- BARU: Menggunakan LATERAL JOIN untuk mencari lokasi dengan stok terbanyak (Main Location)
+        tml.location_name AS main_location_name 
       FROM products p
       LEFT JOIN suppliers s ON p.main_supplier_id = s.id 
       LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN stock_levels sl ON p.id = sl.product_id
+      
+      -- Subquery untuk mendapatkan Main Location
+      LEFT JOIN LATERAL (
+          SELECT l.name AS location_name
+          FROM stock_levels sl_main
+          JOIN locations l ON sl_main.location_id = l.id
+          WHERE sl_main.product_id = p.id AND sl_main.quantity > 0
+          ORDER BY sl_main.quantity DESC
+          LIMIT 1
+      ) tml ON true
+      
       ${whereString} 
+      GROUP BY p.id, s.name, c.name, tml.location_name -- Group by Main Location Name
       ORDER BY p.${sortField} ${order} 
       LIMIT $${limitIndex} 
       OFFSET $${offsetIndex}
@@ -111,8 +128,7 @@ router.get("/", auth, authorize(["admin", "staff"]), async (req, res) => {
     res.status(500).send("Server Error: Gagal memuat data produk master.");
   }
 });
-
-// GET /api/products/:id/main-stock - Mendapatkan lokasi dengan stok terbanyak (untuk Auto-Fill Movement)
+// GET /api/products/:id/main-stock - Mendapatkan stok di lokasi tertentu (untuk MovementForm)
 router.get(
   "/:id/main-stock",
   auth,
@@ -168,6 +184,7 @@ router.get(
     }
   }
 );
+
 // GET /api/products/:id/stock - Mendapatkan detail stok per lokasi (untuk Tabel Produk)
 router.get(
   "/:id/stock",
@@ -226,7 +243,7 @@ router.get(
   }
 );
 
-// POST /api/products - Tambah produk BARU (FIX: Tambahkan semua kolom baru)
+// POST /api/products - Tambah produk BARU (FIX: Tambahkan category_id)
 router.post("/", auth, authorize(["admin", "staff"]), async (req, res) => {
   const client = await db.connect();
   try {
@@ -241,7 +258,7 @@ router.post("/", auth, authorize(["admin", "staff"]), async (req, res) => {
       purchase_price,
       selling_price,
       main_supplier_id,
-      category_id,
+      category_id, // BARU: Ambil category_id
       volume_m3,
       initial_stock_qty,
       initial_location_id,
@@ -260,7 +277,7 @@ router.post("/", auth, authorize(["admin", "staff"]), async (req, res) => {
         purchase_price,
         selling_price,
         main_supplier_id || null,
-        category_id || null,
+        category_id || null, // BARU: Sisipkan category_id
         volume_m3 || 0.01, // Tambahkan volume_m3 (default 0.01 jika null)
       ]
     );
@@ -310,7 +327,7 @@ router.post("/", auth, authorize(["admin", "staff"]), async (req, res) => {
   }
 });
 
-// PUT /api/products/:id - Update data produk
+// PUT /api/products/:id - Update data produk (FIX: Tambahkan category_id)
 router.put("/:id", auth, authorize(["admin", "staff"]), async (req, res) => {
   try {
     const { id } = req.params;
@@ -322,7 +339,7 @@ router.put("/:id", auth, authorize(["admin", "staff"]), async (req, res) => {
       purchase_price,
       selling_price,
       main_supplier_id,
-      category_id,
+      category_id, // BARU: Ambil category_id
       volume_m3,
     } = req.body;
 
@@ -337,7 +354,7 @@ router.put("/:id", auth, authorize(["admin", "staff"]), async (req, res) => {
         purchase_price,
         selling_price,
         main_supplier_id || null,
-        category_id || null,
+        category_id || null, // BARU: Sisipkan category_id
         volume_m3 || 0.01,
         id,
       ]
