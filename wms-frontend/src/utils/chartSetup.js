@@ -2,14 +2,12 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  BarElement,
+  BarElement, // Diperlukan untuk Bar Chart di Dashboard
   Title,
   Tooltip,
   Legend,
-  ArcElement,      // Wajib untuk Pie Chart
-  PointElement,    // Wajib untuk Line Chart
-  LineElement,     // Wajib untuk Line Chart
-  Filler,          // Wajib untuk Fill di Line Chart
+  ArcElement,      // Diperlukan untuk Pie Chart
+  // PointElement, LineElement, Filler DIHAPUS dari impor global
 } from 'chart.js';
 
 export function registerChartComponents() {
@@ -18,12 +16,9 @@ export function registerChartComponents() {
     CategoryScale,
     LinearScale,
     
-    // Elemen Wajib
+    // Elemen yang Diperlukan Secara Global
     BarElement,
     ArcElement, 
-    PointElement,
-    LineElement,
-    Filler, // Tambahkan Filler
     
     // Umum
     Title,

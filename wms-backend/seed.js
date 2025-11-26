@@ -3,344 +3,548 @@ const fs = require("fs");
 const path = require("path");
 const bcrypt = require("bcryptjs");
 
-// Jumlah transaksi yang akan dibuat
-const NUM_TRANSACTIONS = 300; 
+// Konfigurasi
+const CONFIG = {
+  TOTAL_TRANSACTIONS: 400,
+  INITIAL_IN_TRANSACTIONS: 100,
+  TOTAL_PRODUCTS: 60,
+  TOTAL_MOVEMENTS: 15,
+  DATE_RANGE: {
+    START_DAYS_AGO: 365,
+    END_DAYS_AGO: 0
+  },
+  PROBABILITY: {
+    IN_TRANSACTION: 0.6,
+    DAMAGED_GOODS: 0.1,
+    EXPIRED_GOODS: 0.05,
+    HAS_BATCH_NUMBER: 0.3
+  }
+};
 
-// Helper untuk mendapatkan stok saat ini (untuk perhitungan Average Cost)
-async function getCurrentStockAndCost(client, productId, locationId) {
-  const result = await client.query(
-    "SELECT quantity, average_cost FROM stock_levels WHERE product_id = $1 AND location_id = $2 FOR UPDATE",
-    [productId, locationId] // Menggunakan FOR UPDATE untuk locking (opsional, tapi bagus untuk seeder)
-  );
-  return result.rows[0] || { quantity: 0, average_cost: 0.0 };
-}
+class AdvancedSeeder {
+  constructor() {
+    this.client = null;
+    this.masterData = {};
+    this.statistics = {
+      transactions: { created: 0, skipped: 0 },
+      movements: { created: 0, skipped: 0 },
+      products: { created: 0 },
+      startTime: null
+    };
+  }
 
-async function superSeeder() {
-  console.log("Memulai proses SUPER SEED PENUH...");
-  const client = await db.connect();
+  async initialize() {
+    console.log("🚀 Memulai Advanced Database Seeder...");
+    this.statistics.startTime = new Date();
+    this.client = await db.connect();
+    
+    try {
+      await this.client.query("BEGIN");
+      await this.cleanDatabase();
+      await this.createTables();
+      await this.seedMasterData();
+      await this.seedUsers();
+      await this.seedBusinessPartners();
+      await this.seedProducts();
+      await this.seedTransactions();
+      await this.seedMovements();
+      
+      await this.client.query("COMMIT");
+      await this.generateReport();
+      
+    } catch (error) {
+      await this.client.query("ROLLBACK");
+      console.error("❌ Seeder gagal:", error);
+      throw error;
+    } finally {
+      if (this.client) this.client.release();
+      process.exit(0);
+    }
+  }
 
-  try {
-    await client.query("BEGIN");
-    console.log("Transaksi dimulai. Menghapus tabel lama...");
+  async cleanDatabase() {
+    console.log("🧹 Membersihkan database lama...");
+    
+    const tables = [
+      'transaction_items', 'stock_levels', 'movements', 'transactions',
+      'products', 'locations', 'users', 'suppliers', 'customers', 
+      'categories', 'stock_statuses'
+    ];
 
-    // --- 1. HAPUS TABEL (URUTAN WAJIB BENAR) ---
-    await client.query("DROP TABLE IF EXISTS transaction_items CASCADE");
-    await client.query("DROP TABLE IF EXISTS stock_levels CASCADE");
-    await client.query("DROP TABLE IF EXISTS movements CASCADE");
-    await client.query("DROP TABLE IF EXISTS transactions CASCADE");
-    await client.query("DROP TABLE IF EXISTS products CASCADE");
-    await client.query("DROP TABLE IF EXISTS locations CASCADE");
-    await client.query("DROP TABLE IF EXISTS users CASCADE");
-    await client.query("DROP TABLE IF EXISTS suppliers CASCADE");
-    await client.query("DROP TABLE IF EXISTS customers CASCADE");
-    await client.query("DROP TABLE IF EXISTS categories CASCADE");
-    await client.query("DROP TABLE IF EXISTS stock_statuses CASCADE");
-    console.log("Semua tabel lama berhasil dihapus.");
+    for (const table of tables) {
+      await this.client.query(`DROP TABLE IF EXISTS ${table} CASCADE`);
+    }
+    console.log("✅ Database lama berhasil dibersihkan");
+  }
 
-    // --- 2. BUAT ULANG TABEL DARI database.sql ---
-    console.log("Membuat ulang struktur tabel...");
-    const sql = fs
-      .readFileSync(path.join(__dirname, "database.sql"))
-      .toString();
-    await client.query(sql);
-    console.log("Struktur tabel baru berhasil dibuat.");
+  async createTables() {
+    console.log("📋 Membuat struktur tabel...");
+    
+    const sql = fs.readFileSync(path.join(__dirname, "database.sql")).toString();
+    await this.client.query(sql);
+    console.log("✅ Struktur tabel berhasil dibuat");
+  }
 
-    // --- SEED DATA MASTER BARU ---
+  async seedMasterData() {
+    console.log("🏗️  Membuat data master...");
 
-    // STATUSES & CATEGORIES
-    console.log("Membuat Status & Kategori...");
-    const statusRes = await client.query(
-      "INSERT INTO stock_statuses (name) VALUES ('Good'), ('Damaged'), ('Expired') RETURNING id"
+    // Stock Statuses - SESUAI SCHEMA ANDA
+    const statusRes = await this.client.query(
+      `INSERT INTO stock_statuses (name) VALUES 
+       ('Good'),
+       ('Damaged'),
+       ('Expired'),
+       ('Quarantine') 
+       RETURNING id, name`
     );
-    const statusGoodId = statusRes.rows[0].id;
-    const statusDamagedId = statusRes.rows[1].id;
-    const statusExpiredId = statusRes.rows[2].id;
+    this.masterData.statuses = statusRes.rows.reduce((acc, row) => {
+      acc[row.name.toLowerCase()] = row.id;
+      return acc;
+    }, {});
 
-    const categoryRes = await client.query(
-      "INSERT INTO categories (name) VALUES ('Electronics'), ('Office Supplies'), ('Tools'), ('Chemicals') RETURNING id"
+    // Categories - SESUAI SCHEMA ANDA
+    const categoryRes = await this.client.query(
+      `INSERT INTO categories (name) VALUES 
+       ('Electronics'),
+       ('Office Supplies'),
+       ('Tools'),
+       ('Chemicals'),
+       ('Furniture') 
+       RETURNING id, name`
     );
-    const categoryIds = categoryRes.rows.map(r => r.id);
+    this.masterData.categories = categoryRes.rows.reduce((acc, row) => {
+      acc[row.name] = row.id;
+      return acc;
+    }, {});
 
-    // 4. SEED USERS
-    console.log("Membuat user admin, 2 staff, dan 1 supervisor...");
+    // Locations - SESUAI SCHEMA ANDA
+    const locationRes = await this.client.query(
+      `INSERT INTO locations (name, description, max_capacity_m3) VALUES 
+       ('RAK-A1-01', 'Rak fast-moving items - zona biru', 100.0),
+       ('RAK-B2-01', 'Rak slow-moving items - zona hijau', 200.0),
+       ('QA-AREA-01', 'Area quality assurance dan karantina', 50.0),
+       ('DOCK-IN-01', 'Docking area barang masuk', 30.0),
+       ('DOCK-OUT-01', 'Docking area barang keluar', 30.0),
+       ('RAK-C3-01', 'Rak alat berat dan tools', 150.0),
+       ('COLD-STORAGE', 'Penyimpanan bersuhu rendah', 80.0) 
+       RETURNING id, name`
+    );
+    this.masterData.locations = locationRes.rows.reduce((acc, row) => {
+      acc[row.name] = row.id;
+      return acc;
+    }, {});
+
+    console.log("✅ Data master berhasil dibuat");
+  }
+
+  async seedUsers() {
+    console.log("👥 Membuat pengguna sistem...");
+
+    const users = [
+      { username: 'admin', role: 'admin' },
+      { username: 'supervisor', role: 'supervisor' },
+      { username: 'staff1', role: 'staff' },
+      { username: 'staff2', role: 'staff' },
+      { username: 'staff3', role: 'staff' },
+      { username: 'qa1', role: 'staff' } // Changed from 'quality' to 'staff' to match your schema
+    ];
+
+    this.masterData.users = {};
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash("password123", salt);
 
-    const usersData = [
-        { username: 'admin', role: 'admin' },
-        { username: 'staff1', role: 'staff' },
-        { username: 'staff2', role: 'staff' },
-        { username: 'supervisor', role: 'admin' },
+    for (const user of users) {
+      const res = await this.client.query(
+        `INSERT INTO users (username, password_hash, role) 
+         VALUES ($1, $2, $3) RETURNING id, username`,
+        [user.username, passwordHash, user.role]
+      );
+      this.masterData.users[user.username] = res.rows[0].id;
+    }
+
+    console.log(`✅ ${users.length} pengguna berhasil dibuat`);
+  }
+
+  async seedBusinessPartners() {
+    console.log("🏢 Membuat supplier dan customer...");
+
+    // Suppliers - SESUAI SCHEMA ANDA
+    const suppliers = [
+      { name: 'PT. Electronic Global Indonesia', contact_person: 'Budi Santoso', phone: '021-1234567', address: 'Jl. Elektronik No. 123, Jakarta' },
+      { name: 'CV. Office Supplies Mandiri', contact_person: 'Sari Dewi', phone: '021-2345678', address: 'Jl. Kantor No. 45, Bandung' },
+      { name: 'Toko Tools Makmur Jaya', contact_person: 'Joko Widodo', phone: '021-3456789', address: 'Jl. Perkakas No. 67, Surabaya' },
+      { name: 'PT. Kimia Jaya Abadi', contact_person: 'Dian Sastro', phone: '021-4567890', address: 'Jl. Kimia No. 89, Medan' },
+      { name: 'PT. Furniture Modern Indonesia', contact_person: 'Rina Melati', phone: '021-5678901', address: 'Jl. Mebel No. 12, Semarang' }
     ];
-    
-    const userIds = [];
-    for (const u of usersData) {
-        const res = await client.query(
-            "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id",
-            [u.username, passwordHash, u.role]
-        );
-        userIds.push(res.rows[0].id);
-    }
-    const [adminUserId, staffUserId1, staffUserId2, supervisorUserId] = userIds;
-    const operators = userIds; 
 
-    // 5. LOCATIONS, SUPPLIERS, CUSTOMERS
-    console.log("Membuat 5 lokasi, 4 supplier, dan 4 customer...");
-    const locRes = await client.query(
-      "INSERT INTO locations (name, description, max_capacity_m3) VALUES ($1, $2, $3), ($4, $5, $6), ($7, $8, $9), ($10, $11, $12), ($13, $14, $15) RETURNING id",
-      [
-        "RAK A1 (Fast)", "Lokasi barang fast-moving", 100.0,
-        "RAK B2 (Slow)", "Lokasi barang slow-moving", 200.0,
-        "QA AREA", "Area Karantina/Pengecekan", 50.0,
-        "LOADING DOCK", "Area Transit Masuk", 30.0,
-        "RAK C3 (Tools)", "Lokasi alat berat/tools", 150.0,
+    const supplierIds = [];
+    for (const supplier of suppliers) {
+      const res = await this.client.query(
+        `INSERT INTO suppliers (name, contact_person, phone, address) 
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [supplier.name, supplier.contact_person, supplier.phone, supplier.address]
+      );
+      supplierIds.push(res.rows[0].id);
+    }
+    this.masterData.suppliers = supplierIds;
+
+    // Customers - SESUAI SCHEMA ANDA
+    const customers = [
+      { name: 'Toko Jaya Abadi Sentosa', contact_person: 'Ahmad Fauzi', phone: '021-6789012', address: 'Jl. Raya No. 34, Jakarta' },
+      { name: 'Pelanggan Online Super Store', contact_person: 'Maya Sari', phone: '021-7890123', address: 'Jl. Online No. 56, Tangerang' },
+      { name: 'CV. Ritel Besar Indonesia', contact_person: 'Rudi Hartono', phone: '021-8901234', address: 'Jl. Retail No. 78, Bekasi' },
+      { name: 'Proyek Konstruksi Mega Bangun', contact_person: 'Eko Prasetyo', phone: '021-9012345', address: 'Jl. Konstruksi No. 90, Bogor' },
+      { name: 'PT. Corporate Solution Indonesia', contact_person: 'Lisa Permata', phone: '021-0123456', address: 'Jl. Corporate No. 11, Depok' }
+    ];
+
+    const customerIds = [];
+    for (const customer of customers) {
+      const res = await this.client.query(
+        `INSERT INTO customers (name, contact_person, phone, address) 
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [customer.name, customer.contact_person, customer.phone, customer.address]
+      );
+      customerIds.push(res.rows[0].id);
+    }
+    this.masterData.customers = customerIds;
+
+    console.log(`✅ ${this.masterData.suppliers.length} supplier dan ${this.masterData.customers.length} customer berhasil dibuat`);
+  }
+
+  async seedProducts() {
+    console.log("📦 Membuat produk...");
+
+    const productTemplates = {
+      'Electronics': [
+        { name: 'Headset Gaming Pro', unit: 'pcs', basePrice: 250000, volume: 0.08 },
+        { name: 'Mouse Wireless Premium', unit: 'pcs', basePrice: 120000, volume: 0.03 },
+        { name: 'Keyboard Mechanical', unit: 'pcs', basePrice: 350000, volume: 0.12 },
+        { name: 'Webcam HD 1080p', unit: 'pcs', basePrice: 180000, volume: 0.05 },
+        { name: 'Power Bank 20000mAh', unit: 'pcs', basePrice: 150000, volume: 0.06 }
+      ],
+      'Office Supplies': [
+        { name: 'Kertas A4 Premium', unit: 'rim', basePrice: 45000, volume: 0.15 },
+        { name: 'Pulpen Standard', unit: 'pack', basePrice: 25000, volume: 0.02 },
+        { name: 'Stapler Max Pro', unit: 'pcs', basePrice: 35000, volume: 0.04 },
+        { name: 'Binder Clip Set', unit: 'box', basePrice: 15000, volume: 0.01 },
+        { name: 'Notebook Executive', unit: 'pcs', basePrice: 28000, volume: 0.03 }
+      ],
+      'Tools': [
+        { name: 'Kunci Pas Set', unit: 'set', basePrice: 280000, volume: 0.25 },
+        { name: 'Obeng Set Premium', unit: 'set', basePrice: 120000, volume: 0.08 },
+        { name: 'Tang Combination', unit: 'pcs', basePrice: 75000, volume: 0.05 },
+        { name: 'Meteran Laser', unit: 'pcs', basePrice: 450000, volume: 0.15 },
+        { name: 'Drill Electric Set', unit: 'set', basePrice: 680000, volume: 0.35 }
+      ],
+      'Chemicals': [
+        { name: 'Cleaner Multi Purpose', unit: 'botol', basePrice: 45000, volume: 0.02 },
+        { name: 'Disinfectant Spray', unit: 'can', basePrice: 35000, volume: 0.015 },
+        { name: 'Floor Polish', unit: 'botol', basePrice: 68000, volume: 0.025 },
+        { name: 'Glass Cleaner', unit: 'botol', basePrice: 32000, volume: 0.018 },
+        { name: 'Hand Sanitizer', unit: 'botol', basePrice: 28000, volume: 0.012 }
+      ],
+      'Furniture': [
+        { name: 'Kursi Kantor Executive', unit: 'pcs', basePrice: 850000, volume: 0.8 },
+        { name: 'Meja Meeting', unit: 'pcs', basePrice: 1200000, volume: 1.2 },
+        { name: 'Filing Cabinet', unit: 'pcs', basePrice: 450000, volume: 0.3 },
+        { name: 'Rak Buku Minimalis', unit: 'pcs', basePrice: 320000, volume: 0.4 },
+        { name: 'Partisi Kantor', unit: 'panel', basePrice: 180000, volume: 0.15 }
       ]
-    );
-    const locIds = locRes.rows.map(r => r.id);
-    const [locIdA1, locIdB2, locIdQA, locIdDock, locIdC3] = locIds;
-
-    const supplierRes = await client.query(
-      "INSERT INTO suppliers (name) VALUES ('PT. Electronic Global'), ('CV. Office Supplies'), ('Toko Tools Makmur'), ('PT. Kimia Jaya') RETURNING id"
-    );
-    const customerRes = await client.query(
-      "INSERT INTO customers (name) VALUES ('Toko Jaya Abadi'), ('Pelanggan Online Super'), ('CV. Ritel Besar'), ('Proyek Konstruksi Mega') RETURNING id"
-    );
-    const supplierIds = supplierRes.rows.map(r => r.id);
-    const customerIds = customerRes.rows.map(r => r.id);
-
-    // 6. PRODUCTS (60 Produk)
-    console.log("Membuat 60 produk terperinci...");
-    const productsData = [];
-    for (let i = 1; i <= 60; i++) {
-        let catIndex = i % 4; // 0, 1, 2, 3
-        const catId = categoryIds[catIndex];
-        const supplierId = supplierIds[catIndex];
-        
-        let sku, name, unit, price, volume;
-
-        if (catIndex === 0) { // Electronics
-            sku = `ELEC-${i.toString().padStart(3, "0")}`;
-            name = `Headset Gaming Pro V${i}`;
-            unit = "pcs";
-            price = 100000 + i * 5000;
-            volume = 0.05;
-        } else if (catIndex === 1) { // Office Supplies
-            sku = `OFF-${i.toString().padStart(3, "0")}`;
-            name = `Kertas A4 Premium ${i}gsm`;
-            unit = "rim";
-            price = 35000 + i * 50;
-            volume = 0.01;
-        } else if (catIndex === 2) { // Tools
-            sku = `TOOL-${i.toString().padStart(3, "0")}`;
-            name = `Kunci Pas Set Heavy Duty ${i}`;
-            unit = "set";
-            price = 500000 + i * 10000;
-            volume = 0.15;
-        } else { // Chemicals
-            sku = `CHEM-${i.toString().padStart(3, "0")}`;
-            name = `Cleaner Multi Purpose 5L Batch ${i}`;
-            unit = "botol";
-            price = 75000 + i * 200;
-            volume = 0.02;
-        }
-        
-        productsData.push({
-            sku, name, unit, 
-            category_id: catId, 
-            purchase_price: price, 
-            selling_price: price * 1.4,
-            main_supplier_id: supplierId,
-            volume_m3: volume
-        });
-    }
-
-    const productIds = [];
-    for (const p of productsData) {
-        const res = await client.query(
-            "INSERT INTO products (sku, name, unit, category_id, purchase_price, selling_price, main_supplier_id, volume_m3) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, purchase_price, selling_price",
-            [p.sku, p.name, p.unit, p.category_id, p.purchase_price, p.selling_price, p.main_supplier_id, p.volume_m3]
-        );
-        productIds.push({ 
-            id: res.rows[0].id, 
-            initial_price: res.rows[0].purchase_price, 
-            selling_price: res.rows[0].selling_price
-        });
-    }
-
-
-    // --- SEED TRANSACTIONS (300 Transaksi) ---
-    console.log(`Memproses ${NUM_TRANSACTIONS} transaksi kompleks...`);
-
-    const generateRandomDate = (daysAgo) => {
-      const date = new Date();
-      date.setDate(date.getDate() - Math.floor(Math.random() * daysAgo));
-      return date;
     };
 
-    for (let i = 0; i < NUM_TRANSACTIONS; i++) {
-      const type = Math.random() < 0.6 ? "IN" : "OUT";
-      const daysAgo = Math.floor(Math.random() * 365) + 1; // Data hingga 1 tahun ke belakang
-      const date = generateRandomDate(daysAgo);
-      const durationMin = Math.floor(Math.random() * 15) + 5;
-      const operatorId = operators[Math.floor(Math.random() * operators.length)];
-      
-      const productIndex = Math.floor(Math.random() * productIds.length); 
-      const product = productIds[productIndex]; 
-      const productId = product.id;
-      
-      const qty = Math.floor(Math.random() * 50) + 1;
-      
-      let locationId, supplierId, customerId, stockStatus, batchNumber, expiryDate;
-      
-      // Tentukan lokasi berdasarkan tipe produk
-      const isElectronic = productIndex < 15; // Contoh logika penentuan lokasi
-      locationId = isElectronic ? locIdA1 : locIdB2;
+    this.masterData.products = [];
+    let productCounter = 1;
 
-      // Tentukan pihak
-      supplierId = type === "IN" ? supplierIds[Math.floor(Math.random() * supplierIds.length)] : null;
-      customerId = type === "OUT" ? customerIds[Math.floor(Math.random() * customerIds.length)] : null;
-      
-      // Tentukan status stok (10% Damaged, 5% Expired saat IN)
-      stockStatus = statusGoodId;
-      if (type === "IN" && Math.random() < 0.10) {
-          stockStatus = Math.random() < 0.5 ? statusDamagedId : statusExpiredId;
-      }
-      
-      // Batch dan Expiry Date
-      if (stockStatus === statusExpiredId) {
-           expiryDate = generateRandomDate(Math.floor(Math.random() * 60)); // Kadaluarsa dalam 60 hari
-      } else if (stockStatus === statusGoodId && productIndex % 10 === 0) {
-           batchNumber = `BATCH-${Math.floor(Math.random() * 999)}`;
-      }
+    for (const [categoryName, templates] of Object.entries(productTemplates)) {
+      const categoryId = this.masterData.categories[categoryName];
+      const supplierIndex = Object.keys(productTemplates).indexOf(categoryName) % this.masterData.suppliers.length;
+      const mainSupplierId = this.masterData.suppliers[supplierIndex];
 
-      // --- LOGIKA AVERAGE COST DAN STOCK CHECK ---
-      
-      const currentStock = await getCurrentStockAndCost(client, productId, locationId);
-      const oldQty = parseFloat(currentStock.quantity);
-      const oldAvgCost = parseFloat(currentStock.average_cost);
-
-      let qtyChange = type === "IN" ? qty : -qty;
-      let purchasePriceAtTrans = oldAvgCost; 
-      let transactionPrice = product.initial_price * (1 + (Math.random() * 0.1 - 0.05)); // Harga Beli +- 5%
-      let newAvgCost = oldAvgCost; 
-      
-      // Hanya izinkan OUT jika stok cukup
-      if (type === "OUT") {
-        if (oldQty < qty) {
-          continue; // Lewati transaksi jika stok tidak cukup
-        }
-        purchasePriceAtTrans = oldAvgCost; // COGS saat keluar adalah Average Cost
-        
-      } else if (type === "IN") {
-        purchasePriceAtTrans = transactionPrice; // HPP transaksi masuk adalah harga beli
-        
-        // Hitung Biaya Rata-Rata Baru (Average Cost Logic)
-        if (oldQty + qty > 0) {
-            newAvgCost = ((oldQty * oldAvgCost) + (qty * transactionPrice)) / (oldQty + qty);
-        } else {
-            newAvgCost = transactionPrice;
-        }
-      }
-
-      // 7. Catat Header Transaksi
-      const transRes = await client.query(
-        "INSERT INTO transactions (type, notes, supplier_id, customer_id, operator_id, process_start, process_end) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
-        [
-          type,
-          `${type} Order #${i}`,
-          supplierId,
-          customerId,
-          operatorId,
-          date,
-          new Date(date.getTime() + durationMin * 60000),
-        ]
-      );
-      const transId = transRes.rows[0].id;
-
-      // 8. Catat Item
-      await client.query(
-        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date, purchase_price_at_trans, selling_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-        [
-          transId,
-          productId,
-          locationId,
-          qty,
-          stockStatus,
-          batchNumber || null,
-          expiryDate || null,
-          purchasePriceAtTrans, 
-          product.selling_price * (type === 'OUT' ? 1 : 0.9), // Harga jual acak, atau 0.9x jika IN
-        ]
-      );
-
-      // 9. Update Stock Levels (Termasuk Average Cost)
-      // Gunakan UPDATE/INSERT (UPSERT)
-      await client.query(
-        `
-            INSERT INTO stock_levels (product_id, location_id, quantity, average_cost) 
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (product_id, location_id) 
-            DO UPDATE SET 
-                quantity = stock_levels.quantity + EXCLUDED.quantity,
-                average_cost = $4
-        `,
-        [productId, locationId, qtyChange, newAvgCost] 
-      );
-    }
-
-    // 10. SEED MOVEMENT (15 Perpindahan)
-    console.log("Membuat 15 perpindahan barang untuk data pergerakan...");
-    for (let j = 0; j < 15; j++) {
-        const product = productIds[Math.floor(Math.random() * productIds.length)];
-        const fromLoc = locIdA1; // Pindahkan dari A1
-        const toLoc = locIdQA;  // Pindahkan ke QA
-        const moveQty = 5;
-        const operatorId = operators[Math.floor(Math.random() * operators.length)];
-        
-        const stockA1 = await getCurrentStockAndCost(client, product.id, fromLoc);
-        if (stockA1.quantity < moveQty) continue;
-
-        await client.query(
-            "INSERT INTO movements (product_id, from_location_id, to_location_id, quantity, reason, operator_id, date) VALUES ($1, $2, $3, $4, $5, $6, NOW())",
+      for (const template of templates) {
+        for (let variant = 1; variant <= 3; variant++) {
+          const productName = `${template.name} V${variant}`;
+          const sku = `${categoryName.substring(0, 4).toUpperCase()}-${productCounter.toString().padStart(3, '0')}`;
+          const description = `${productName} - ${categoryName} dengan kualitas terbaik`;
+          
+          const purchasePrice = template.basePrice * (0.9 + (variant * 0.1));
+          const sellingPrice = purchasePrice * (1.3 + (Math.random() * 0.3));
+          
+          const res = await this.client.query(
+            `INSERT INTO products (sku, name, description, unit, category_id, purchase_price, selling_price, main_supplier_id, volume_m3) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
             [
-                product.id,
-                fromLoc,
-                toLoc,
-                moveQty,
-                j % 3 === 0 ? "QA Check" : "Relokasi Gudang",
-                operatorId,
+              sku,
+              productName,
+              description,
+              template.unit,
+              categoryId,
+              Math.round(purchasePrice),
+              Math.round(sellingPrice),
+              mainSupplierId,
+              template.volume
             ]
-        );
+          );
 
-        // Update stok (Kurangi di Asal)
-        await client.query(
-            "UPDATE stock_levels SET quantity = quantity - $1 WHERE product_id = $2 AND location_id = $3",
-            [moveQty, product.id, fromLoc]
-        );
+          this.masterData.products.push({
+            id: res.rows[0].id,
+            purchasePrice: purchasePrice,
+            sellingPrice: sellingPrice,
+            category: categoryName,
+            volume: template.volume
+          });
 
-        // Update stok (Tambah di Tujuan, HPP tetap sama)
-        await client.query(
-            `
-            INSERT INTO stock_levels (product_id, location_id, quantity, average_cost) 
-            VALUES ($1, $2, $3, $4) 
-            ON CONFLICT (product_id, location_id) 
-            DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity, average_cost = $4
-            `,
-            [product.id, toLoc, moveQty, stockA1.average_cost]
-        );
+          productCounter++;
+          this.statistics.products.created++;
+        }
+      }
     }
 
-    // 11. SELESAI
-    await client.query("COMMIT");
-    console.log("✅ SUPER SEED BERHASIL! DB siap untuk pengujian Average Cost dan Laporan.");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("❌ SUPER SEED GAGAL:", err.message);
-  } finally {
-    client.release();
-    process.exit(0);
+    console.log(`✅ ${this.statistics.products.created} produk berhasil dibuat`);
+  }
+
+  async seedTransactions() {
+    console.log(`💰 Membuat ${CONFIG.TOTAL_TRANSACTIONS} transaksi...`);
+
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    const startDate = new Date(Date.now() - (CONFIG.DATE_RANGE.START_DAYS_AGO * ONE_DAY));
+    const endDate = new Date(Date.now() - (CONFIG.DATE_RANGE.END_DAYS_AGO * ONE_DAY));
+
+    for (let i = 0; i < CONFIG.TOTAL_TRANSACTIONS; i++) {
+      const type = i < CONFIG.INITIAL_IN_TRANSACTIONS ? 'IN' : 
+                  (Math.random() < CONFIG.PROBABILITY.IN_TRANSACTION ? 'IN' : 'OUT');
+
+      // Tanggal acak dalam rentang
+      const randomTime = startDate.getTime() + Math.random() * (endDate.getTime() - startDate.getTime());
+      const transactionDate = new Date(randomTime);
+
+      const product = this.masterData.products[Math.floor(Math.random() * this.masterData.products.length)];
+      const quantity = Math.floor(Math.random() * 30) + 1;
+      const userId = Object.values(this.masterData.users)[Math.floor(Math.random() * Object.values(this.masterData.users).length)];
+
+      // Tentukan lokasi berdasarkan kategori produk
+      let locationId;
+      if (product.category === 'Electronics') {
+        locationId = this.masterData.locations['RAK-A1-01'];
+      } else if (product.category === 'Tools') {
+        locationId = this.masterData.locations['RAK-C3-01'];
+      } else if (product.category === 'Chemicals') {
+        locationId = this.masterData.locations['COLD-STORAGE'];
+      } else {
+        locationId = this.masterData.locations['RAK-B2-01'];
+      }
+
+      // Data untuk transaksi IN vs OUT
+      let supplierId = null, customerId = null;
+      if (type === 'IN') {
+        supplierId = this.masterData.suppliers[Math.floor(Math.random() * this.masterData.suppliers.length)];
+      } else {
+        customerId = this.masterData.customers[Math.floor(Math.random() * this.masterData.customers.length)];
+      }
+
+      // Status stok dan batch number
+      let stockStatusId = this.masterData.statuses.good;
+      let batchNumber = null;
+      let expiryDate = null;
+
+      if (type === 'IN') {
+        if (Math.random() < CONFIG.PROBABILITY.DAMAGED_GOODS) {
+          stockStatusId = this.masterData.statuses.damaged;
+        } else if (Math.random() < CONFIG.PROBABILITY.EXPIRED_GOODS) {
+          stockStatusId = this.masterData.statuses.expired;
+          expiryDate = new Date(transactionDate.getTime() - (Math.random() * 90 * ONE_DAY));
+        }
+
+        if (Math.random() < CONFIG.PROBABILITY.HAS_BATCH_NUMBER) {
+          batchNumber = `BATCH-${transactionDate.getFullYear()}${(transactionDate.getMonth() + 1).toString().padStart(2, '0')}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+        }
+      }
+
+      try {
+        // Cek stok untuk transaksi OUT
+        if (type === 'OUT') {
+          const stockCheck = await this.getCurrentStock(product.id, locationId);
+          if (!stockCheck || stockCheck.quantity < quantity) {
+            this.statistics.transactions.skipped++;
+            continue;
+          }
+        }
+
+        // Insert transaksi
+        const transRes = await this.client.query(
+          `INSERT INTO transactions (type, notes, supplier_id, customer_id, operator_id, process_start, process_end, date) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+          [
+            type,
+            `${type} Transaction #${i + 1} - ${product.category}`,
+            supplierId,
+            customerId,
+            userId,
+            transactionDate,
+            new Date(transactionDate.getTime() + (Math.floor(Math.random() * 30) + 10) * 60000), // +10-40 menit
+            transactionDate
+          ]
+        );
+
+        const transactionId = transRes.rows[0].id;
+
+        // Update harga berdasarkan waktu (inflasi simulasi)
+        const timeFactor = (transactionDate.getTime() - startDate.getTime()) / (endDate.getTime() - startDate.getTime());
+        const currentPurchasePrice = product.purchasePrice * (1 + (timeFactor * 0.2)); // +20% over time
+        const currentSellingPrice = product.sellingPrice * (1 + (timeFactor * 0.15)); // +15% over time
+
+        // Insert transaction item
+        await this.client.query(
+          `INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date, purchase_price_at_trans, selling_price_at_trans) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            transactionId,
+            product.id,
+            locationId,
+            quantity,
+            stockStatusId,
+            batchNumber,
+            expiryDate,
+            Math.round(currentPurchasePrice),
+            type === 'OUT' ? Math.round(currentSellingPrice) : null
+          ]
+        );
+
+        // Update stock levels dengan average cost calculation
+        await this.updateStockLevels(product.id, locationId, type === 'IN' ? quantity : -quantity, currentPurchasePrice);
+
+        this.statistics.transactions.created++;
+
+        // Progress reporting
+        if ((i + 1) % 50 === 0) {
+          console.log(`📊 Progress: ${i + 1}/${CONFIG.TOTAL_TRANSACTIONS} transaksi dibuat...`);
+        }
+
+      } catch (error) {
+        console.warn(`⚠️ Transaksi ${i} dilewati:`, error.message);
+        this.statistics.transactions.skipped++;
+      }
+    }
+
+    console.log(`✅ ${this.statistics.transactions.created} transaksi berhasil dibuat, ${this.statistics.transactions.skipped} dilewati`);
+  }
+
+  async seedMovements() {
+    console.log("🔄 Membuat data perpindahan barang...");
+
+    const movementReasons = [
+      "Quality Assurance Check",
+      "Stock Rotation",
+      "Relokasi Gudang",
+      "Picking untuk Packing",
+      "Karantina Quality Control",
+      "Optimisasi Penyimpanan"
+    ];
+
+    for (let i = 0; i < CONFIG.TOTAL_MOVEMENTS; i++) {
+      try {
+        const product = this.masterData.products[Math.floor(Math.random() * this.masterData.products.length)];
+        const fromLocationId = this.masterData.locations['RAK-A1-01'];
+        const toLocationId = this.masterData.locations['QA-AREA-01'];
+        const quantity = Math.floor(Math.random() * 10) + 1;
+        const userId = Object.values(this.masterData.users)[Math.floor(Math.random() * Object.values(this.masterData.users).length)];
+
+        // Cek stok di lokasi asal
+        const sourceStock = await this.getCurrentStock(product.id, fromLocationId);
+        if (!sourceStock || sourceStock.quantity < quantity) {
+          this.statistics.movements.skipped++;
+          continue;
+        }
+
+        // Insert movement
+        await this.client.query(
+          `INSERT INTO movements (product_id, from_location_id, to_location_id, quantity, reason, operator_id, date) 
+           VALUES ($1, $2, $3, $4, $5, $6, NOW() - ($7 || ' days')::interval)`,
+          [
+            product.id,
+            fromLocationId,
+            toLocationId,
+            quantity,
+            movementReasons[Math.floor(Math.random() * movementReasons.length)],
+            userId,
+            Math.floor(Math.random() * 30) // Random date dalam 30 hari terakhir
+          ]
+        );
+
+        // Update stock levels
+        await this.updateStockLevels(product.id, fromLocationId, -quantity, sourceStock.average_cost);
+        await this.updateStockLevels(product.id, toLocationId, quantity, sourceStock.average_cost);
+
+        this.statistics.movements.created++;
+
+      } catch (error) {
+        console.warn(`⚠️ Movement ${i} dilewati:`, error.message);
+        this.statistics.movements.skipped++;
+      }
+    }
+
+    console.log(`✅ ${this.statistics.movements.created} perpindahan berhasil dibuat, ${this.statistics.movements.skipped} dilewati`);
+  }
+
+  // Helper Methods
+  async getCurrentStock(productId, locationId) {
+    const result = await this.client.query(
+      "SELECT quantity, average_cost FROM stock_levels WHERE product_id = $1 AND location_id = $2",
+      [productId, locationId]
+    );
+    return result.rows[0] || null;
+  }
+
+  async updateStockLevels(productId, locationId, quantityChange, purchasePrice) {
+    const currentStock = await this.getCurrentStock(productId, locationId);
+    
+    let newQuantity, newAverageCost;
+
+    if (!currentStock) {
+      newQuantity = quantityChange;
+      newAverageCost = purchasePrice;
+    } else {
+      newQuantity = parseFloat(currentStock.quantity) + quantityChange;
+      
+      if (quantityChange > 0) { // Hanya update average cost untuk barang masuk
+        const currentTotalValue = parseFloat(currentStock.quantity) * parseFloat(currentStock.average_cost);
+        const incomingValue = quantityChange * purchasePrice;
+        newAverageCost = (currentTotalValue + incomingValue) / newQuantity;
+      } else {
+        newAverageCost = parseFloat(currentStock.average_cost);
+      }
+    }
+
+    await this.client.query(
+      `INSERT INTO stock_levels (product_id, location_id, quantity, average_cost) 
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (product_id, location_id) 
+       DO UPDATE SET quantity = $3, average_cost = $4`,
+      [productId, locationId, newQuantity, newAverageCost]
+    );
+  }
+
+  async generateReport() {
+    const endTime = new Date();
+    const duration = (endTime - this.statistics.startTime) / 1000;
+
+    console.log('\n' + '='.repeat(60));
+    console.log('📊 LAPORAN FINAL SEEDER');
+    console.log('='.repeat(60));
+    console.log(`⏱️  Durasi proses: ${duration.toFixed(2)} detik`);
+    console.log(`📦 Produk dibuat: ${this.statistics.products.created}`);
+    console.log(`💰 Transaksi: ${this.statistics.transactions.created} berhasil, ${this.statistics.transactions.skipped} dilewati`);
+    console.log(`🔄 Pergerakan: ${this.statistics.movements.created} berhasil, ${this.statistics.movements.skipped} dilewati`);
+    console.log(`👥 User: ${Object.keys(this.masterData.users).length}`);
+    console.log(`🏢 Supplier: ${this.masterData.suppliers.length}`);
+    console.log(`🏪 Customer: ${this.masterData.customers.length}`);
+    console.log(`📋 Kategori: ${Object.keys(this.masterData.categories).length}`);
+    console.log(`📍 Lokasi: ${Object.keys(this.masterData.locations).length}`);
+    console.log('='.repeat(60));
+    console.log('✅ SEEDER BERHASIL DIJALANKAN! Database siap untuk pengujian.');
+    console.log('='.repeat(60));
   }
 }
 
-// Jalankan Super Seeder
-superSeeder();
+// Jalankan seeder
+const seeder = new AdvancedSeeder();
+seeder.initialize().catch(console.error);
