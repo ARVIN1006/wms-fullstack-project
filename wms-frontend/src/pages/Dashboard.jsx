@@ -4,6 +4,7 @@ import { Bar } from "react-chartjs-2";
 import { toast } from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import { io } from "socket.io-client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const STOCK_LIMIT_PER_PAGE = 10;
 
@@ -114,107 +115,114 @@ const DashboardSkeleton = ({ isAdmin }) => {
 // --- END KOMPONEN SKELETON ---
 
 function Dashboard() {
-  const [stats, setStats] = useState({ productCount: 0, locationCount: 0 });
-  const [stocks, setStocks] = useState([]);
-  const [lowStockItems, setLowStockItems] = useState([]);
-  const [recentActivity, setRecentActivity] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { userRole } = useAuth();
+  const isAdmin = userRole === "admin";
+  const queryClient = useQueryClient();
 
   // --- STATE PAGINATION ---
   const [stockCurrentPage, setStockCurrentPage] = useState(1);
-  const [stockTotalPages, setStockTotalPages] = useState(0);
-  const [stockTotalCount, setStockTotalCount] = useState(0);
 
-  // --- STATE UNTUK TOTAL NILAI STOK GUDANG (HPP KESELURUHAN) ---
-  const [totalAssetValue, setTotalAssetValue] = useState(0);
+  // --- QUERIES ---
 
-  const { userRole } = useAuth();
-  const isAdmin = userRole === "admin";
+  // 1. Products Count
+  const { data: productsData } = useQuery({
+    queryKey: ["productsCount"],
+    queryFn: async () => {
+      const res = await axios.get("/api/products?limit=1"); // Limit 1 just to get count if API supports it, or fetch all if needed for count
+      // Assuming the API returns totalCount in the response even with limit
+      // If not, we might need a dedicated count endpoint or fetch all.
+      // Based on previous code: axios.get("/api/products?limit=1000")
+      // Let's stick to previous logic but maybe optimize later.
+      const response = await axios.get("/api/products?limit=1000");
+      return response.data;
+    },
+  });
 
-  // --- Fungsi untuk mengambil data stok dengan pagination ---
-  async function fetchStocksData(isMounted, page) {
-    try {
-      if (isMounted) {
-        const stockRes = await axios.get(
-          `/api/stocks?page=${page}&limit=${STOCK_LIMIT_PER_PAGE}`
-        );
-        setStocks(stockRes.data.stocks);
-        setStockTotalPages(stockRes.data.totalPages);
-        setStockTotalCount(stockRes.data.totalCount);
-        setStockCurrentPage(stockRes.data.currentPage);
-      }
-    } catch (err) {
-      if (isMounted) toast.error("Gagal memuat data stok.");
-    }
-  }
+  // 2. Locations Count
+  const { data: locationsData } = useQuery({
+    queryKey: ["locationsCount"],
+    queryFn: async () => {
+      const res = await axios.get("/api/locations");
+      return res.data;
+    },
+  });
 
-  // --- Fungsi Utama Fetch Data Dashboard ---
-  async function fetchDashboardData(isMounted, page = 1) {
-    try {
-      if (isMounted) setLoading(true);
+  // 3. Low Stock
+  const { data: lowStockItems = [] } = useQuery({
+    queryKey: ["lowStock"],
+    queryFn: async () => {
+      const res = await axios.get("/api/stocks/low-stock?threshold=10");
+      return res.data;
+    },
+  });
 
-      const [productRes, locationRes, lowStockRes, activityRes, financialRes] =
-        await Promise.all([
-          axios.get("/api/products?limit=1000"),
-          axios.get("/api/locations"),
-          axios.get("/api/stocks/low-stock?threshold=10"),
-          axios.get("/api/reports/recent-activity"),
-          axios.get("/api/reports/financial"),
-        ]);
+  // 4. Recent Activity
+  const { data: recentActivity = [] } = useQuery({
+    queryKey: ["recentActivity"],
+    queryFn: async () => {
+      const res = await axios.get("/api/reports/recent-activity");
+      return res.data;
+    },
+  });
 
-      // Fetch stok secara terpisah dengan pagination
-      await fetchStocksData(isMounted, page);
+  // 5. Financial (Total Asset Value)
+  const { data: financialData } = useQuery({
+    queryKey: ["financialSummary"],
+    queryFn: async () => {
+      const res = await axios.get("/api/reports/financial");
+      return res.data;
+    },
+  });
 
-      if (isMounted) {
-        setStats({
-          productCount: productRes.data.products.length,
-          locationCount: locationRes.data.length,
-        });
-        setLowStockItems(lowStockRes.data);
-        setRecentActivity(activityRes.data);
-        setTotalAssetValue(
-          parseFloat(financialRes.data.valuation.total_asset_value || 0)
-        );
-      }
-    } catch (err) {
-      if (
-        isMounted &&
-        err.response?.status !== 401 &&
-        err.response?.status !== 403
-      ) {
-        toast.error("Gagal memuat data dashboard.");
-      }
-    } finally {
-      if (isMounted) setLoading(false);
-    }
-  }
+  // 6. Stocks with Pagination
+  const { data: stocksData, isLoading: stocksLoading } = useQuery({
+    queryKey: ["stocks", stockCurrentPage],
+    queryFn: async () => {
+      const res = await axios.get(
+        `/api/stocks?page=${stockCurrentPage}&limit=${STOCK_LIMIT_PER_PAGE}`
+      );
+      return res.data;
+    },
+    keepPreviousData: true, // Keep showing previous page data while fetching new page
+  });
 
-  // --- Perbaikan useEffect dengan Cleanup Function ---
-  useEffect(() => {
-    let isMounted = true;
-    fetchDashboardData(isMounted, stockCurrentPage);
+  const stocks = stocksData?.stocks || [];
+  const stockTotalPages = stocksData?.totalPages || 0;
+  const stockTotalCount = stocksData?.totalCount || 0;
 
-    return () => {
-      isMounted = false;
-    };
-  }, [userRole, stockCurrentPage]);
+  // Derived Stats
+  const productCount = productsData?.totalCount || 0;
+  const locationCount = locationsData?.length || 0;
+  const totalAssetValue = parseFloat(
+    financialData?.valuation?.total_asset_value || 0
+  );
 
-  // Realtime update menggunakan Socket.IO (KEEP AS IS - Cleanup socket sudah benar)
+  // Loading State (Combined)
+  // We can be more granular, but for now let's use a general loading state if critical data is missing
+  const loading = stocksLoading && !stocksData;
+
+  // Realtime update menggunakan Socket.IO
   useEffect(() => {
     const socket = io("http://localhost:5000");
 
     socket.on("new_activity", (data) => {
       console.log("Realtime event diterima:", data.message);
       toast.success(data.message, { icon: "⚡" });
-      fetchDashboardData(true, stockCurrentPage);
+      // Invalidate queries to refetch data
+      queryClient.invalidateQueries({ queryKey: ["stocks"] });
+      queryClient.invalidateQueries({ queryKey: ["recentActivity"] });
+      queryClient.invalidateQueries({ queryKey: ["productsCount"] });
+      queryClient.invalidateQueries({ queryKey: ["financialSummary"] });
+      queryClient.invalidateQueries({ queryKey: ["lowStock"] });
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [stockCurrentPage]);
+  }, [queryClient]);
 
   // Data untuk grafik stok teratas (diambil dari stocks state, yang hanya berisi 1 halaman)
+  // Note: Ideally this should be a separate query for "Top Stocks" if pagination limits the view
   const top5Stocks = stocks.sort((a, b) => b.quantity - a.quantity).slice(0, 5);
 
   const topStockData = {
@@ -260,7 +268,7 @@ function Dashboard() {
   }
 
   // Jika tidak loading dan tidak ada stok sama sekali
-  if (stocks.length === 0 && stockTotalCount === 0) {
+  if (stocks.length === 0 && stockTotalCount === 0 && !stocksLoading) {
     return (
       <div className="p-6 space-y-6">
         <h1 className="text-3xl font-bold text-gray-900">🏠 Dashboard</h1>
@@ -301,7 +309,7 @@ function Dashboard() {
             Total Produk
           </h2>
           <p className="text-4xl font-bold text-blue-600 mt-2">
-            {stats.productCount}
+            {productCount}
           </p>
         </div>
 
@@ -310,7 +318,7 @@ function Dashboard() {
             Total Lokasi
           </h2>
           <p className="text-4xl font-bold text-purple-600 mt-2">
-            {stats.locationCount}
+            {locationCount}
           </p>
         </div>
 

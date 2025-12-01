@@ -1,80 +1,85 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const db = require('./config/db');
-const http = require('http');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const http = require("http");
 const { Server } = require("socket.io");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const logger = require("./config/logger");
 
 // Impor Rute
-const productRoutes = require('./routes/productRoutes');
-const locationRoutes = require('./routes/locationRoutes');
-const transactionRoutes = require('./routes/transactionRoutes');
-const stockRoutes = require('./routes/stockRoutes');
-const reportRoutes = require('./routes/reportRoutes');
-const authRoutes = require('./routes/authRoutes');
-const supplierRoutes = require('./routes/supplierRoutes');
-const userRoutes = require('./routes/userRoutes');
-const customerRoutes = require('./routes/customerRoutes');
-const movementRoutes = require('./routes/movementRoutes');
-const financialRoutes = require('./routes/financialRoutes');
-
+const productRoutes = require("./routes/productRoutes");
+const locationRoutes = require("./routes/locationRoutes");
+const transactionRoutes = require("./routes/transactionRoutes");
+const stockRoutes = require("./routes/stockRoutes");
+const reportRoutes = require("./routes/reportRoutes");
+const authRoutes = require("./routes/authRoutes");
+const supplierRoutes = require("./routes/supplierRoutes");
+const userRoutes = require("./routes/userRoutes");
+const customerRoutes = require("./routes/customerRoutes");
+const movementRoutes = require("./routes/movementRoutes");
+const financialRoutes = require("./routes/financialRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// --- SETUP SOCKET.IO ---
-const server = http.createServer(app); 
-const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:5173", 
-    methods: ["GET", "POST"]
-  }
-});
+// Middleware Keamanan
+app.use(helmet());
 
-// Middleware Global
+// Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 menit
+  max: 100, // Batasi setiap IP hingga 100 permintaan per windowMs
+  message:
+    "Terlalu banyak permintaan dari IP ini, silakan coba lagi setelah 15 menit",
+});
+app.use(limiter);
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// BARU: MIDDLEWARE PENYUNTIK IO
-// Middleware ini harus diletakkan sebelum semua rute yang menggunakan req.io
-app.use((req, res, next) => {
-    req.io = io;
-    next();
+// --- SETUP SOCKET.IO ---
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST"],
+  },
 });
-// END MIDDLEWARE PENYUNTIK IO
 
-// Gunakan Rute (Sekarang req.io tersedia di semua rute di bawah ini)
-app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/locations', locationRoutes);
+// Middleware untuk menyisipkan io ke req
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
 
-// Fix: transactionRoutes harus berada di sini
-app.use('/api/transactions', transactionRoutes); 
+// Gunakan Rute
+app.use("/api/products", productRoutes);
+app.use("/api/locations", locationRoutes);
+app.use("/api/transactions", transactionRoutes);
+app.use("/api/stocks", stockRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/suppliers", supplierRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/movements", movementRoutes);
+app.use("/api/reports/financial", financialRoutes);
 
-app.use('/api/stocks', stockRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/suppliers', supplierRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/customers', customerRoutes);
-
-// Fix: movementRoutes harus berada di sini
-app.use('/api/movements', movementRoutes); 
-
-app.use('/api/reports/financial', financialRoutes);
-
-app.get('/', (req, res) => {
-  res.send('Halo! Server WMS sudah aktif 🚀');
+app.get("/", (req, res) => {
+  res.send("Halo! Server WMS sudah aktif 🚀");
 });
 
 // Logika Koneksi Socket.IO
-io.on('connection', (socket) => {
-  console.log('🔌 Seorang pengguna terhubung (Socket.IO)');
-  
-  socket.on('disconnect', () => {
-    console.log('❌ Pengguna terputus');
+io.on("connection", (socket) => {
+  logger.info("🔌 Seorang pengguna terhubung (Socket.IO)");
+
+  socket.on("disconnect", () => {
+    logger.info("❌ Pengguna terputus");
   });
 });
 
 server.listen(PORT, () => {
-  console.log(`Server berjalan di http://localhost:${PORT}`);
+  logger.info(`Server berjalan di http://localhost:${PORT}`);
 });

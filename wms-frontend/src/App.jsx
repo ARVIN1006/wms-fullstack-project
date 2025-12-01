@@ -6,7 +6,10 @@ import {
   Navigate,
 } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuth } from "./context/AuthContext";
+
+const queryClient = new QueryClient();
 
 // Halaman
 import Navbar from "./components/Navbar";
@@ -58,56 +61,58 @@ function PublicLayout() {
 
 function App() {
   return (
-    <Router>
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+    <QueryClientProvider client={queryClient}>
+      <Router>
+        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
 
-      <Routes>
-        {/* RUTE PUBLIK */}
-        <Route element={<PublicLayout />}>
-          <Route path="/login" element={<LoginPage />} />
-        </Route>
+        <Routes>
+          {/* RUTE PUBLIK */}
+          <Route element={<PublicLayout />}>
+            <Route path="/login" element={<LoginPage />} />
+          </Route>
 
-        {/* RUTE AMAN / PROTECTED */}
-        <Route element={<MainLayout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/products" element={<ProductList />} />
-          <Route path="/suppliers" element={<SupplierList />} />
-          <Route path="/locations" element={<LocationList />} />
-          <Route path="/customers" element={<CustomerList />} />
-          <Route path="/movements" element={<MovementForm />} />
-          <Route path="/stock-opname" element={<StockOpname />} />
-          {/* PERBAIKAN ROUTING TRANSAKSI */}
-          {/* 1. Redirect /transactions ke /transactions/in (Default) */}
-          <Route
-            path="/transactions"
-            element={<Navigate to="/transactions/in" replace />}
-          />
-          {/* 2. Tambahkan parameter :type (in atau out) */}
-          <Route path="/transactions/:type" element={<TransactionForm />} />
-          {/* RUTE PELAPORAN (Pastikan Semua Ada) */}
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/reports/movement" element={<MovementReport />} />
-          <Route
-            path="/reports/performance"
-            element={<PerformanceReport />}
-          />{" "}
-          {/* <-- INI PERBAIKANNYA */}
-          <Route path="/reports/activity" element={<UserActivityReport />} />
-          <Route
-            path="/reports/customer-order"
-            element={<CustomerOrderReport />}
-          />
-          <Route path="/reports/financial" element={<FinancialReport />} />
-          <Route
-            path="/reports/status-inventory"
-            element={<StatusInventoryReport />}
-          />
-          {/* RUTE ADMIN/PROFILE */}
-          <Route path="/admin" element={<AdminControl />} />
-          <Route path="/profile" element={<Profile />} />
-        </Route>
-      </Routes>
-    </Router>
+          {/* RUTE AMAN / PROTECTED */}
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/products" element={<ProductList />} />
+            <Route path="/suppliers" element={<SupplierList />} />
+            <Route path="/locations" element={<LocationList />} />
+            <Route path="/customers" element={<CustomerList />} />
+            <Route path="/movements" element={<MovementForm />} />
+            <Route path="/stock-opname" element={<StockOpname />} />
+            {/* PERBAIKAN ROUTING TRANSAKSI */}
+            {/* 1. Redirect /transactions ke /transactions/in (Default) */}
+            <Route
+              path="/transactions"
+              element={<Navigate to="/transactions/in" replace />}
+            />
+            {/* 2. Tambahkan parameter :type (in atau out) */}
+            <Route path="/transactions/:type" element={<TransactionForm />} />
+            {/* RUTE PELAPORAN (Pastikan Semua Ada) */}
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/reports/movement" element={<MovementReport />} />
+            <Route
+              path="/reports/performance"
+              element={<PerformanceReport />}
+            />{" "}
+            {/* <-- INI PERBAIKANNYA */}
+            <Route path="/reports/activity" element={<UserActivityReport />} />
+            <Route
+              path="/reports/customer-order"
+              element={<CustomerOrderReport />}
+            />
+            <Route path="/reports/financial" element={<FinancialReport />} />
+            <Route
+              path="/reports/status-inventory"
+              element={<StatusInventoryReport />}
+            />
+            {/* RUTE ADMIN/PROFILE */}
+            <Route path="/admin" element={<AdminControl />} />
+            <Route path="/profile" element={<Profile />} />
+          </Route>
+        </Routes>
+      </Router>
+    </QueryClientProvider>
   );
 }
 
