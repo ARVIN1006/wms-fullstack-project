@@ -39,7 +39,7 @@ function MainLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <Navbar />
       <div className="container mx-auto py-6">
         <Outlet />
@@ -76,13 +76,14 @@ function App() {
           <Route path="/customers" element={<CustomerList />} />
           <Route path="/movements" element={<MovementForm />} />
           <Route path="/stock-opname" element={<StockOpname />} />
-          
           {/* PERBAIKAN ROUTING TRANSAKSI */}
           {/* 1. Redirect /transactions ke /transactions/in (Default) */}
-          <Route path="/transactions" element={<Navigate to="/transactions/in" replace />} />
+          <Route
+            path="/transactions"
+            element={<Navigate to="/transactions/in" replace />}
+          />
           {/* 2. Tambahkan parameter :type (in atau out) */}
-          <Route path="/transactions/:type" element={<TransactionForm />} /> 
-          
+          <Route path="/transactions/:type" element={<TransactionForm />} />
           {/* RUTE PELAPORAN (Pastikan Semua Ada) */}
           <Route path="/reports" element={<Reports />} />
           <Route path="/reports/movement" element={<MovementReport />} />
