@@ -9,6 +9,7 @@ import DashboardSkeleton from "../../components/skeletons/DashboardSkeleton";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
+import NotificationBell from "../../components/common/NotificationBell";
 import { formatCurrency } from "../../utils/formatters";
 import {
   Chart as ChartJS,
@@ -239,9 +240,9 @@ function Dashboard() {
               weekday: "long",
               year: "numeric",
               month: "long",
-              day: "numeric",
             })}
           </Badge>
+          <NotificationBell />
         </div>
       </div>
 

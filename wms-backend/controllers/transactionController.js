@@ -155,17 +155,50 @@ exports.createTransactionIn = async (req, res) => {
       );
 
       // 2b. Update Stok dan Average Cost (UPSERT + UPDATE COST)
-      await client.query(
-        `
-        INSERT INTO stock_levels (product_id, location_id, quantity, average_cost)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (product_id, location_id)
-        DO UPDATE SET 
-            quantity = stock_levels.quantity + EXCLUDED.quantity,
-            average_cost = $4 
-      `,
-        [product_id, location_id, quantity, newAvgCost]
-      );
+      // 2b. Update Stok dan Average Cost (UPSERT Manual untuk handle Batch NULL)
+      // Cek stok eksisting untuk batch ini
+      const checkStockQuery = `
+          SELECT quantity FROM stock_levels 
+          WHERE product_id = $1 AND location_id = $2 
+          AND (batch_number = $3 OR (batch_number IS NULL AND $3 IS NULL))
+        `;
+      const existingStockRes = await client.query(checkStockQuery, [
+        product_id,
+        location_id,
+        batch_number || null,
+      ]);
+
+      if (existingStockRes.rows.length > 0) {
+        // Update
+        await client.query(
+          `UPDATE stock_levels 
+              SET quantity = quantity + $3, average_cost = $4, expiry_date = COALESCE($5, expiry_date)
+              WHERE product_id = $1 AND location_id = $2 
+              AND (batch_number = $6 OR (batch_number IS NULL AND $6 IS NULL))`,
+          [
+            product_id,
+            location_id,
+            quantity,
+            newAvgCost,
+            expiry_date || null,
+            batch_number || null,
+          ]
+        );
+      } else {
+        // Insert
+        await client.query(
+          `INSERT INTO stock_levels (product_id, location_id, quantity, average_cost, batch_number, expiry_date)
+              VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            product_id,
+            location_id,
+            quantity,
+            newAvgCost,
+            batch_number || null,
+            expiry_date || null,
+          ]
+        );
+      }
 
       // 2c. Update Master Data Produk (Harga Jual Terbaru saja)
       if (selling_price > 0) {
@@ -249,49 +282,76 @@ exports.createTransactionOut = async (req, res) => {
       if (!stock_status_id)
         throw new Error(`Item #${idx}: Status Stok belum dipilih.`);
 
-      // 2a. Cek Stok Dulu & Ambil AVERAGE COST saat ini
-      const stockCheck = await client.query(
-        "SELECT quantity, average_cost FROM stock_levels WHERE product_id = $1 AND location_id = $2 FOR UPDATE",
+      // 2a. FIFO ALLOCATION LOGIC (Smart Batching)
+      // Ambil semua batch yang tersedia, urutkan berdasarkan expiry_date (FIFO)
+      const availableBatchesRes = await client.query(
+        `SELECT batch_number, quantity, expiry_date, average_cost 
+         FROM stock_levels 
+         WHERE product_id = $1 AND location_id = $2 AND quantity > 0
+         ORDER BY expiry_date ASC NULLS LAST, created_at ASC`,
         [product_id, location_id]
       );
-      const currentStock = stockCheck.rows[0];
-      const currentQty = parseFloat(currentStock?.quantity || 0);
 
-      if (currentQty < quantity) {
+      const availableBatches = availableBatchesRes.rows;
+      const totalAvailable = availableBatches.reduce(
+        (sum, b) => sum + parseFloat(b.quantity),
+        0
+      );
+
+      if (totalAvailable < quantity) {
         throw new Error(
-          `Item #${idx}: Stok tidak cukup di lokasi ini. (Tersedia: ${currentQty.toFixed(
+          `Item #${idx}: Stok tidak cukup di lokasi ini. (Tersedia: ${totalAvailable.toFixed(
             2
           )}, Diminta: ${quantity.toFixed(2)})`
         );
       }
 
-      // HPP saat ini adalah Average Cost di stock_levels
-      const purchasePriceAtTrans = parseFloat(currentStock?.average_cost || 0);
+      // Alokasi pengurangan stok dari batch (FIFO)
+      let quantityToDeduct = quantity;
 
-      // 2b. Menyimpan detail di transaction_items (purchase_price_at_trans = HPP Rata-Rata)
-      await client.query(
-        "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date, selling_price_at_trans, purchase_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-        [
-          transactionId,
-          product_id,
-          location_id,
-          quantity,
-          stock_status_id,
-          batch_number || null,
-          expiry_date || null,
-          selling_price,
-          purchasePriceAtTrans, // <-- HPP DARI AVERAGE COST
-        ]
-      );
+      for (const batch of availableBatches) {
+        if (quantityToDeduct <= 0) break;
 
-      // 2c. Update Stok (Kurangi)
-      // NOTE: Average Cost TIDAK BERUBAH saat barang keluar
-      await client.query(
-        "UPDATE stock_levels SET quantity = quantity - $1 WHERE product_id = $2 AND location_id = $3",
-        [quantity, product_id, location_id]
-      );
+        const batchQty = parseFloat(batch.quantity);
+        const deduct = Math.min(batchQty, quantityToDeduct);
 
-      // 2d. Update Master Data Produk (Harga Jual Terbaru)
+        // Update stok batch ini
+        await client.query(
+          `UPDATE stock_levels 
+            SET quantity = quantity - $1 
+            WHERE product_id = $2 AND location_id = $3 
+            AND (batch_number = $4 OR (batch_number IS NULL AND $4 IS NULL))`,
+          [deduct, product_id, location_id, batch.batch_number]
+        );
+
+        // Catat di transaction_items (per batch allocation)
+        // Jika satu item transaksi memakan banyak batch, idealnya kita split rows.
+        // TAPI untuk simplifikasi di MVP ini, kita insert row transaksi UTAMA dengan batch FIFO pertama/dominan
+        // ATAU kita biarkan batch_number NULL di trans_items jika multiple.
+        // UNTUK AKURASI: Kita catat detail transaction_items terpisah untuk tiap batch yg kemakan?
+        // SEMENTARA: Kita catat item transaksi general, tapi backend update stoknya detail.
+        // Masalah: Nanti tracking batch mana yang keluar susah.
+        // BETTER: Insert 1 row transaction_item per batch deduction.
+
+        await client.query(
+          "INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number, expiry_date, selling_price_at_trans, purchase_price_at_trans) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+          [
+            transactionId,
+            product_id,
+            location_id,
+            deduct,
+            stock_status_id,
+            batch.batch_number, // Real batch used
+            batch.expiry_date,
+            selling_price,
+            batch.average_cost, // True COGS for this specific batch
+          ]
+        );
+
+        quantityToDeduct -= deduct;
+      }
+
+      // Update Master Data Produk (Harga Jual Terbaru)
       if (selling_price > 0) {
         await client.query(
           "UPDATE products SET selling_price = $1 WHERE id = $2",

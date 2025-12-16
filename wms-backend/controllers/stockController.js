@@ -68,6 +68,34 @@ exports.getLowStock = async (req, res) => {
   }
 };
 
+// GET /api/stocks/batches - Suggest Batches (FIFO)
+exports.getBatchSuggestions = async (req, res) => {
+  try {
+    const { productId, locationId } = req.query;
+    if (!productId || !locationId) {
+      return res
+        .status(400)
+        .json({ msg: "Product ID and Location ID required" });
+    }
+
+    const query = `
+      SELECT 
+        batch_number, 
+        expiry_date, 
+        quantity, 
+        created_at
+      FROM stock_levels
+      WHERE product_id = $1 AND location_id = $2 AND quantity > 0
+      ORDER BY expiry_date ASC NULLS LAST, created_at ASC
+    `;
+    const result = await db.query(query, [productId, locationId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("ERROR IN /api/stocks/batches:", err.message);
+    res.status(500).send("Server Error");
+  }
+};
+
 // GET /api/stocks/specific/:productId/:locationId
 exports.getSpecificStock = async (req, res) => {
   try {

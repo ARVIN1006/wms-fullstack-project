@@ -25,7 +25,8 @@ function ExportButton({ data, headers, filename, children, className }) {
   useEffect(() => {
     if (typeof data === "function") {
       setLoading(true);
-      data()
+      // Handle both sync (array) and async (Promise) returns
+      Promise.resolve(data())
         .then((res) => {
           setDataToExport(res);
           setLoading(false);

@@ -188,14 +188,16 @@ exports.getProductStockDetail = async (req, res) => {
   }
 };
 
-// GET /api/products/by-sku/:sku (FIX: Tambah category_id dan volume_m3)
+// GET /api/products/by-sku/:sku (FIX: Tambah category_id, volume_m3, min_stock, barcode)
+// ALSO SEARCH BY BARCODE IF SKU NOT FOUND
 exports.getProductBySku = async (req, res) => {
   try {
     const { sku } = req.params;
 
-    // Tambahkan volume_m3 dan category_id ke SELECT
+    // Tambahkan volume_m3, category_id, min_stock, barcode ke SELECT
+    // Cek SKU atau Barcode
     const productResult = await db.query(
-      "SELECT id, sku, name, purchase_price, selling_price, volume_m3, category_id FROM products WHERE sku ILIKE $1 LIMIT 1",
+      "SELECT id, sku, barcode, name, purchase_price, selling_price, volume_m3, category_id, min_stock FROM products WHERE sku ILIKE $1 OR barcode = $1 LIMIT 1",
       [sku]
     );
 
@@ -235,7 +237,7 @@ exports.createProduct = async (req, res) => {
 
     // FIX 1: Masukkan data Master Produk (Menggunakan 9 parameter baru)
     const newProduct = await client.query(
-      "INSERT INTO products (sku, name, description, unit, purchase_price, selling_price, main_supplier_id, category_id, volume_m3) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, sku",
+      "INSERT INTO products (sku, name, description, unit, purchase_price, selling_price, main_supplier_id, category_id, volume_m3, min_stock, barcode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, sku",
       [
         sku,
         name,
@@ -246,6 +248,8 @@ exports.createProduct = async (req, res) => {
         main_supplier_id || null,
         category_id || null, // BARU: Sisipkan category_id
         volume_m3 || 0.01, // Tambahkan volume_m3 (default 0.01 jika null)
+        parseFloat(req.body.min_stock) || 0,
+        req.body.barcode || null,
       ]
     );
     const productId = newProduct.rows[0].id;
@@ -270,12 +274,7 @@ exports.createProduct = async (req, res) => {
       );
 
       await client.query(
-        `
-          INSERT INTO stock_levels (product_id, location_id, quantity)
-          VALUES ($1, $2, $3)
-          ON CONFLICT (product_id, location_id)
-          DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity
-        `,
+        "INSERT INTO stock_levels (product_id, location_id, quantity, batch_number) VALUES ($1, $2, $3, NULL)",
         [productId, initial_location_id, initial_stock_qty]
       );
     }
@@ -312,7 +311,7 @@ exports.updateProduct = async (req, res) => {
 
     // Query UPDATE (9 parameter untuk produk)
     const updateProduct = await db.query(
-      "UPDATE products SET sku = $1, name = $2, description = $3, unit = $4, purchase_price = $5, selling_price = $6, main_supplier_id = $7, category_id = $8, volume_m3 = $9 WHERE id = $10 RETURNING *",
+      "UPDATE products SET sku = $1, name = $2, description = $3, unit = $4, purchase_price = $5, selling_price = $6, main_supplier_id = $7, category_id = $8, volume_m3 = $9, min_stock = $10, barcode = $11 WHERE id = $12 RETURNING *",
       [
         sku,
         name,
@@ -323,6 +322,8 @@ exports.updateProduct = async (req, res) => {
         main_supplier_id || null,
         category_id || null, // BARU: Sisipkan category_id
         volume_m3 || 0.01,
+        parseFloat(req.body.min_stock) || 0,
+        req.body.barcode || null,
         id,
       ]
     );

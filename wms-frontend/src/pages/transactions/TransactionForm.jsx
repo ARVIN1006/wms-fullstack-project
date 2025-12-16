@@ -5,6 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useForm, useFieldArray } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
+import Input from "../../components/common/Input"; // Import Input component
 
 // Import Components
 import TransactionTypeSelector from "../../components/transactions/TransactionTypeSelector";
@@ -83,6 +84,7 @@ function TransactionForm() {
   const [categories, setCategories] = useState([]);
   const [loadingMaster, setLoadingMaster] = useState(true);
   const [itemStockInfo, setItemStockInfo] = useState({});
+  const [scanInput, setScanInput] = useState(""); // State for barcode input
 
   // --- RHF Hook ---
   const {
@@ -310,6 +312,52 @@ function TransactionForm() {
     }
   };
 
+  // --- Handler Scan Barcode ---
+  const handleScan = async (e) => {
+    e.preventDefault();
+    if (!scanInput.trim()) return;
+
+    try {
+      const categoryId = getValues("categoryFilter")?.value || "";
+      const url = `/api/products/by-sku/${scanInput}`;
+      const res = await axios.get(url);
+      const product = res.data;
+
+      // Cek apakah produk sudah ada di list
+      const currentItems = getValues("items");
+      const existingIndex = currentItems.findIndex(
+        (item) => item.product?.value === product.id
+      );
+
+      if (existingIndex >= 0) {
+        // Increment quantity logic could go here, but for now just notify
+        toast("Produk sudah ada di list. Silakan update quantity.", {
+          icon: "ℹ️",
+        });
+        // Optional: auto focus to that item's quantity
+      } else {
+        // Add new item
+        append({
+          product: {
+            value: product.id,
+            label: `${product.sku} - ${product.name}`,
+            purchasePrice: parseFloat(product.purchase_price),
+            sellingPrice: parseFloat(product.selling_price),
+          },
+          quantity: 1,
+          location: null,
+          stockStatus: null,
+          purchasePrice: parseFloat(product.purchase_price),
+          sellingPrice: parseFloat(product.selling_price),
+        });
+        toast.success(`Ditemukan: ${product.name}`);
+      }
+      setScanInput(""); // Clear input
+    } catch (err) {
+      toast.error("Produk tidak ditemukan (SKU/Barcode salah).");
+    }
+  };
+
   if (loadingMaster) {
     return (
       <div className="flex justify-center p-12">
@@ -346,6 +394,24 @@ function TransactionForm() {
           </p>
         </div>
         <TransactionTypeSelector transactionType={transactionType} />
+      </div>
+
+      {/* Barcode Scanner Input - Always Visible */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex gap-2">
+        <form onSubmit={handleScan} className="flex-1 flex gap-2">
+          <div className="flex-1">
+            <Input
+              name="barcodeScanner"
+              value={scanInput}
+              onChange={(e) => setScanInput(e.target.value)}
+              placeholder="Scan Barcode atau Ketik SKU disini lalu tekan Enter..."
+              autoFocus
+            />
+          </div>
+          <Button type="submit" variant="primary">
+            Scan / Cari
+          </Button>
+        </form>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">

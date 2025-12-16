@@ -36,6 +36,11 @@ const validationSchema = yup.object().shape({
       schema.nullable().required("Lokasi wajib diisi jika Stok Awal > 0."),
     otherwise: (schema) => schema.nullable(),
   }),
+  minStock: yup
+    .number()
+    .transform((value, originalValue) => (originalValue === "" ? 0 : value))
+    .min(0, "Min. Stok tidak boleh negatif."),
+  barcode: yup.string().nullable(),
 });
 
 function ProductForm({ onSave, onClose, productToEdit }) {
@@ -64,6 +69,8 @@ function ProductForm({ onSave, onClose, productToEdit }) {
       category: null,
       initialStockQty: 0,
       initialLocation: null,
+      minStock: 0,
+      barcode: "",
     },
   });
 
@@ -145,6 +152,8 @@ function ProductForm({ onSave, onClose, productToEdit }) {
 
       setValue("initialStockQty", 0);
       setValue("initialLocation", null);
+      setValue("minStock", parseFloat(productToEdit.min_stock || 0));
+      setValue("barcode", productToEdit.barcode || "");
     } else if (!productToEdit) {
       setIsEditing(false);
       setValue("sku", "");
@@ -157,6 +166,8 @@ function ProductForm({ onSave, onClose, productToEdit }) {
       setValue("category", null);
       setValue("initialStockQty", 0);
       setValue("initialLocation", null);
+      setValue("minStock", 0);
+      setValue("barcode", "");
     }
   }, [
     productToEdit,
@@ -180,6 +191,8 @@ function ProductForm({ onSave, onClose, productToEdit }) {
 
       initial_stock_qty: isEditing ? 0 : data.initialStockQty,
       initial_location_id: isEditing ? null : data.initialLocation?.value,
+      min_stock: data.minStock,
+      barcode: data.barcode,
     });
   };
 
@@ -273,6 +286,23 @@ function ProductForm({ onSave, onClose, productToEdit }) {
                   {...register("name")}
                   error={errors.name?.message}
                   placeholder="Masukkan nama produk lengkap"
+                />
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <Input
+                  label="Barcode / Kode Batang"
+                  {...register("barcode")}
+                  error={errors.barcode?.message}
+                  placeholder="Scan atau ketik barcode"
+                />
+                <Input
+                  label="Min. Stok (Alert)"
+                  type="number"
+                  min="0"
+                  {...register("minStock")}
+                  error={errors.minStock?.message}
+                  placeholder="0"
                 />
               </div>
 

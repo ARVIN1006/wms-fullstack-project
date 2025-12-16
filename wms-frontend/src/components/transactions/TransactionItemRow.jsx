@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Select from "react-select";
 import AsyncSelect from "react-select/async";
+import axios from "axios"; // Import axios
 import Input from "../common/Input";
 import Button from "../common/Button";
 import Card from "../common/Card";
@@ -38,6 +39,38 @@ const TransactionItemRow = ({
 
   const watchedProduct = watch(`items.${index}.product`);
   const watchedLocation = watch(`items.${index}.location`);
+  const [batchOptions, setBatchOptions] = useState([]);
+
+  // Fetch batches when product/location changes for OUT transactions
+  useEffect(() => {
+    if (
+      transactionType === "OUT" &&
+      watchedProduct?.value &&
+      watchedLocation?.value
+    ) {
+      const fetchBatches = async () => {
+        try {
+          const res = await axios.get(
+            `/api/stocks/batches?productId=${watchedProduct.value}&locationId=${watchedLocation.value}`
+          );
+          const options = res.data.map((b) => ({
+            value: b.batch_number,
+            label: `${b.batch_number || "No Batch"} (Exp: ${
+              b.expiry_date
+                ? new Date(b.expiry_date).toLocaleDateString("id-ID")
+                : "-"
+            }) - Qty: ${b.quantity}`,
+          }));
+          setBatchOptions(options);
+        } catch (err) {
+          console.error("Failed to fetch batches", err);
+        }
+      };
+      fetchBatches();
+    } else {
+      setBatchOptions([]);
+    }
+  }, [transactionType, watchedProduct?.value, watchedLocation?.value]);
 
   const customSelectStyles = {
     control: (base) => ({
@@ -202,12 +235,27 @@ const TransactionItemRow = ({
 
         {/* 6. Batch Number */}
         <div className="col-span-12 md:col-span-4">
-          <Input
-            label="Batch Number"
-            type="text"
-            {...register(`items.${index}.batchNumber`)}
-            placeholder="Opsional"
-          />
+          <label className="block text-xs font-bold text-gray-700 mb-1">
+            Batch Number
+          </label>
+          {transactionType === "IN" ? (
+            <Input
+              type="text"
+              {...register(`items.${index}.batchNumber`)}
+              placeholder="No Batch (Opsional)"
+            />
+          ) : (
+            <Select
+              options={[{ value: "", label: "Auto (FIFO)" }, ...batchOptions]}
+              onChange={(otp) =>
+                setValue(`items.${index}.batchNumber`, otp?.value || "")
+              }
+              placeholder="Pilih Batch / Auto"
+              isClearable
+              styles={customSelectStyles}
+              className="text-sm"
+            />
+          )}
         </div>
 
         {/* 7. Expiry Date */}

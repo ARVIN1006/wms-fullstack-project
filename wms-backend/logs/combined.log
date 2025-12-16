@@ -88,3 +88,9 @@
 {"level":"info","message":"🔌 Seorang pengguna terhubung (Socket.IO)","service":"wms-backend","timestamp":"2025-12-16 20:43:56"}
 {"level":"info","message":"❌ Pengguna terputus","service":"wms-backend","timestamp":"2025-12-16 20:44:06"}
 {"level":"info","message":"🔌 Seorang pengguna terhubung (Socket.IO)","service":"wms-backend","timestamp":"2025-12-16 21:27:12"}
+{"level":"info","message":"❌ Pengguna terputus","service":"wms-backend","timestamp":"2025-12-16 21:47:31"}
+{"level":"info","message":"🔌 Seorang pengguna terhubung (Socket.IO)","service":"wms-backend","timestamp":"2025-12-16 21:47:39"}
+{"level":"info","message":"❌ Pengguna terputus","service":"wms-backend","timestamp":"2025-12-16 21:52:04"}
+{"level":"info","message":"Server berjalan di http://localhost:5000","service":"wms-backend","timestamp":"2025-12-16 21:58:16"}
+{"level":"info","message":"🔌 Seorang pengguna terhubung (Socket.IO)","service":"wms-backend","timestamp":"2025-12-16 21:58:32"}
+{"level":"info","message":"❌ Pengguna terputus","service":"wms-backend","timestamp":"2025-12-16 21:58:37"}

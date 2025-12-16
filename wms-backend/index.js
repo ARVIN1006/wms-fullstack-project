@@ -19,6 +19,7 @@ const userRoutes = require("./routes/userRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const movementRoutes = require("./routes/movementRoutes");
 const financialRoutes = require("./routes/financialRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -69,6 +70,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/movements", movementRoutes);
 app.use("/api/reports/financial", financialRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.send("Halo! Server WMS sudah aktif 🚀");

@@ -4,10 +4,10 @@ const auth = require("../middleware/auth");
 const authorize = require("../middleware/role");
 const stockController = require("../controllers/stockController");
 
-// GET /api/stocks - Mendapatkan semua stok (Dashboard)
+// GET /api/stocks - Ambil semua data stok (Pagination)
 router.get("/", auth, authorize(["admin", "staff"]), stockController.getStocks);
 
-// GET /api/stocks/low-stock - Mencari stok tipis
+// GET /api/stocks/low-stock - Ambil stok menipis
 router.get(
   "/low-stock",
   auth,
@@ -15,7 +15,15 @@ router.get(
   stockController.getLowStock
 );
 
-// GET /api/stocks/specific/:productId/:locationId - Untuk Stock Opname
+// NEW: GET /api/stocks/batches - Ambil saran batch (FIFO)
+router.get(
+  "/batches",
+  auth,
+  authorize(["admin", "staff"]),
+  stockController.getBatchSuggestions
+);
+
+// GET /api/stocks/specific/:productId/:locationId - Stok spesifik
 router.get(
   "/specific/:productId/:locationId",
   auth,
@@ -23,7 +31,7 @@ router.get(
   stockController.getSpecificStock
 );
 
-// POST /api/stocks/opname - Mencatat dan Menyesuaikan Stok Opname
+// POST /api/stocks/opname - Stok Opname
 router.post(
   "/opname",
   auth,
