@@ -1,6 +1,8 @@
 import React from "react";
 import TransactionItemRow from "./TransactionItemRow";
 import Select from "react-select";
+import Button from "../common/Button";
+import Card from "../common/Card";
 
 const TransactionItemsTable = ({
   fields,
@@ -24,72 +26,104 @@ const TransactionItemsTable = ({
     ...categories.map((c) => ({ value: c.id, label: c.name })),
   ];
 
-  return (
-    <div>
-      {/* --- FILTER KATEGORI (KONTROL PRODUK) --- */}
-      <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Filter Produk Berdasarkan Kategori
-        </label>
-        <Select
-          options={categoryOptions}
-          value={selectedCategoryFilter}
-          // Saat filter kategori berubah, item yang sudah ada TIDAK perlu direset
-          onChange={(option) => setValue("categoryFilter", option)}
-          placeholder="Semua Kategori"
-          isClearable={true}
-          classNamePrefix="react-select"
-        />
-      </div>
+  const customSelectStyles = {
+    control: (base) => ({
+      ...base,
+      backgroundColor: "rgba(255, 255, 255, 0.5)",
+      borderColor: "#e5e7eb",
+      borderRadius: "0.75rem",
+      padding: "2px",
+      "&:hover": {
+        borderColor: "#cbd5e1",
+      },
+      boxShadow: "none",
+    }),
+    menu: (base) => ({
+      ...base,
+      borderRadius: "0.75rem",
+      overflow: "hidden",
+      zIndex: 10,
+    }),
+  };
 
-      {/* --- ITEM BARIS (FIELD ARRAY) --- */}
-      <h2 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">
-        Detail Item Transaksi
-      </h2>
+  return (
+    <div className="space-y-6">
+      <Card className="!p-4 bg-gray-50/50">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-gray-800">
+              Detail Item Transaksi
+            </h2>
+            <p className="text-gray-500 text-sm">
+              Tambahkan produk yang akan{" "}
+              {transactionType === "IN" ? "masuk" : "keluar"}
+            </p>
+          </div>
+
+          <div className="w-full md:w-72">
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+              Filter Kategori Produk
+            </label>
+            <Select
+              options={categoryOptions}
+              value={selectedCategoryFilter}
+              onChange={(option) => setValue("categoryFilter", option)}
+              placeholder="Semua Kategori"
+              isClearable={true}
+              styles={customSelectStyles}
+              className="text-sm"
+            />
+          </div>
+        </div>
+      </Card>
 
       {errors.items && (
-        <p className="text-red-500 text-sm mb-4">
-          Minimal harus ada 1 item transaksi.
-        </p>
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium animate-pulse">
+          ⚠️ Minimal harus ada 1 item transaksi.
+        </div>
       )}
 
-      {fields.map((field, index) => (
-        <TransactionItemRow
-          key={field.id}
-          index={index}
-          register={register}
-          errors={errors}
-          remove={remove}
-          transactionType={transactionType}
-          locations={locations}
-          stockStatuses={stockStatuses}
-          loadProductOptions={loadProductOptions}
-          setValue={setValue}
-          watch={watch}
-          itemStockInfo={itemStockInfo}
-          fetchStockInfo={fetchStockInfo}
-        />
-      ))}
+      <div className="space-y-4">
+        {fields.map((field, index) => (
+          <TransactionItemRow
+            key={field.id}
+            index={index}
+            register={register}
+            errors={errors}
+            remove={remove}
+            transactionType={transactionType}
+            locations={locations}
+            stockStatuses={stockStatuses}
+            loadProductOptions={loadProductOptions}
+            setValue={setValue}
+            watch={watch}
+            itemStockInfo={itemStockInfo}
+            fetchStockInfo={fetchStockInfo}
+          />
+        ))}
+      </div>
 
-      {/* Tombol Tambah Item */}
-      <button
-        type="button"
-        onClick={() =>
-          append({
-            product: null,
-            location: null,
-            stockStatus: stockStatuses.find((s) => s.name === "Good") || null,
-            quantity: 1,
-            purchasePrice: 0,
-            sellingPrice: 0,
-            batchNumber: "",
-            expiryDate: "",
-          })
-        }
-        className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition mb-6"
-      >
-        + Tambah Item
-      </button>
+      <div className="flex justify-center py-4 border-2 border-dashed border-gray-300 rounded-2xl hover:border-indigo-400 transition-colors bg-gray-50/30">
+        <Button
+          type="button"
+          onClick={() =>
+            append({
+              product: null,
+              location: null,
+              stockStatus: stockStatuses.find((s) => s.name === "Good") || null,
+              quantity: 1,
+              purchasePrice: 0,
+              sellingPrice: 0,
+              batchNumber: "",
+              expiryDate: "",
+            })
+          }
+          variant="success"
+          startIcon="+"
+        >
+          Tambah Item Baru
+        </Button>
+      </div>
     </div>
   );
 };

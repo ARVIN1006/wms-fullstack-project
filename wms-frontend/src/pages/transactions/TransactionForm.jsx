@@ -7,9 +7,10 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 
 // Import Components
-import TransactionTypeSelector from "../components/transactions/TransactionTypeSelector";
-import TransactionHeader from "../components/transactions/TransactionHeader";
-import TransactionItemsTable from "../components/transactions/TransactionItemsTable";
+import TransactionTypeSelector from "../../components/transactions/TransactionTypeSelector";
+import TransactionHeader from "../../components/transactions/TransactionHeader";
+import TransactionItemsTable from "../../components/transactions/TransactionItemsTable";
+import Button from "../../components/common/Button";
 
 // --- DEFINISI SKEMA VALIDASI YUP ---
 const itemSchema = yup.object().shape({
@@ -66,6 +67,7 @@ const validationSchema = yup.object().shape({
     .array()
     .of(itemSchema)
     .min(1, "Minimal harus ada 1 item transaksi."),
+  transactionType: yup.string(), // Added for validation context access if needed
 });
 
 function TransactionForm() {
@@ -96,12 +98,13 @@ function TransactionForm() {
     reset,
   } = useForm({
     resolver: yupResolver(validationSchema),
-    context: { transactionType: transactionType },
+    context: { transactionType }, // Pass transactionType to yup context correctly
     defaultValues: {
       notes: "",
       supplier: null,
       customer: null,
       categoryFilter: null,
+      transactionType: transactionType,
       items: [],
     },
   });
@@ -121,10 +124,11 @@ function TransactionForm() {
       supplier: null,
       customer: null,
       categoryFilter: null,
+      transactionType: transactionType,
       items: [],
     });
     setItemStockInfo({});
-  }, [urlType, reset]);
+  }, [urlType, reset, transactionType]); // Added transactionType dependency
 
   // --- Fetch Stock Info (Stok Tersedia & HPP) ---
   const fetchStockInfo = useCallback(
@@ -191,6 +195,7 @@ function TransactionForm() {
     clearErrors,
     setError,
     loadingMaster,
+    errors.items, // Added errors.items to dependency to avoid stale closure issues
   ]);
 
   // --- Fetch Master Data Awal ---
@@ -246,7 +251,7 @@ function TransactionForm() {
           product_id: item.product.value,
           location_id: item.location.value,
           quantity: parseInt(item.quantity),
-          stock_status_id: item.stockStatus.value,
+          stock_status_id: item.stockStatus?.value || null,
           batch_number: item.batchNumber || null,
           expiry_date: item.expiryDate || null,
           purchase_price: item.purchasePrice || avgCost,
@@ -306,13 +311,17 @@ function TransactionForm() {
   };
 
   if (loadingMaster) {
-    return <div className="p-6">Memuat data master...</div>;
+    return (
+      <div className="flex justify-center p-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
   }
 
   const title =
     transactionType === "IN"
-      ? "📥 Transaksi Barang Masuk"
-      : "📤 Transaksi Barang Keluar";
+      ? "Transaksi Barang Masuk"
+      : "Transaksi Barang Keluar";
 
   if (transactionType !== "IN" && transactionType !== "OUT") {
     return (
@@ -324,14 +333,22 @@ function TransactionForm() {
   }
 
   return (
-    <div className="p-6 bg-white shadow-lg rounded-lg max-w-7xl mx-auto">
-      <TransactionTypeSelector transactionType={transactionType} />
+    <div className="animate-fade-in-up space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-center bg-white/40 backdrop-blur-md p-4 rounded-2xl border border-white/50 shadow-sm">
+        <div>
+          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-teal-500">
+            {title}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {transactionType === "IN"
+              ? "Catat penerimaan barang dari supplier"
+              : "Catat pengeluaran barang untuk pelanggan"}
+          </p>
+        </div>
+        <TransactionTypeSelector transactionType={transactionType} />
+      </div>
 
-      <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">
-        {title}
-      </h1>
-
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <TransactionHeader
           transactionType={transactionType}
           control={control}
@@ -362,16 +379,28 @@ function TransactionForm() {
         />
 
         {/* --- FOOTER / SUBMIT --- */}
-        <div className="flex justify-end mt-6 border-t pt-4">
-          <button
+        <div className="flex justify-end pt-4 border-t border-gray-100">
+          <Button
             type="submit"
+            variant={
+              transactionType === "IN" ? "primary" : "secondary"
+            } /* secondary is teal/orange usually, wait, let me check Button variants */
+            // Actually let's use primary for both or specifically colored buttons.
+            // But Button component supports variants. 'primary' is usually indigo.
+            // Let's stick to primary for clean look.
+            size="lg"
             disabled={isSubmitting || fields.length === 0}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition disabled:bg-gray-400"
+            isLoading={isSubmitting}
+            className={`w-full md:w-auto ${
+              transactionType === "OUT"
+                ? "!bg-orange-500 hover:!bg-orange-600 focus:!ring-orange-200"
+                : ""
+            }`}
           >
             {isSubmitting
               ? "Memproses..."
-              : `Catat Transaksi ${transactionType}`}
-          </button>
+              : `Simpan Transaksi ${transactionType}`}
+          </Button>
         </div>
       </form>
     </div>

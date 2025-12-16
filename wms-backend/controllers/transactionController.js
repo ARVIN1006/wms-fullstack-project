@@ -50,7 +50,13 @@ exports.createTransactionIn = async (req, res) => {
     const checkedLocations = new Map();
 
     for (const item of items) {
-      const { product_id, location_id, quantity, purchase_price } = item;
+      const {
+        product_id,
+        location_id,
+        quantity: rawQuantity,
+        purchase_price,
+      } = item;
+      const quantity = parseFloat(rawQuantity);
 
       if (quantity <= 0 || !product_id || !location_id) {
         throw new Error(
@@ -104,13 +110,15 @@ exports.createTransactionIn = async (req, res) => {
       const {
         product_id,
         location_id,
-        quantity,
+        quantity: rawQuantity,
         stock_status_id,
         purchase_price, // Harga Beli Item Masuk
         selling_price,
         batch_number,
         expiry_date,
       } = item;
+
+      const quantity = parseFloat(rawQuantity);
 
       // --- LOGIKA AVERAGE COST ---
       const currentStock = await getCurrentStockAndCost(
@@ -199,6 +207,7 @@ exports.createTransactionOut = async (req, res) => {
 
     const { notes, items, customer_id } = req.body;
     const operator_id = req.user.id;
+    console.log("REQ BODY OUT:", JSON.stringify(req.body, null, 2));
 
     // 1. Buat Header Transaksi
     const transResult = await client.query(
@@ -208,22 +217,37 @@ exports.createTransactionOut = async (req, res) => {
     const transactionId = transResult.rows[0].id;
 
     // 2. Proses Setiap Item Barang
+    // 2. Proses Setiap Item Barang
+    let idx = 0;
     for (const item of items) {
+      idx++;
       const {
         product_id,
         location_id,
-        quantity,
+        quantity: rawQuantity,
         stock_status_id,
         selling_price,
         batch_number,
         expiry_date,
       } = item;
 
-      if (quantity <= 0 || !product_id || !location_id || !stock_status_id) {
+      const quantity = parseFloat(rawQuantity);
+
+      // DEBUG LOG
+      console.log(
+        `Processing Item #${idx}: Product=${product_id}, Loc=${location_id}, Qty=${quantity}, Status=${stock_status_id}`
+      );
+
+      // VALIDASI VERBOSE
+      if (isNaN(quantity) || quantity <= 0) {
         throw new Error(
-          "Item baris wajib memiliki Produk, Lokasi, Status, dan Jumlah."
+          `Item #${idx}: Jumlah (Quantity) tidak valid atau 0 (Parsed: ${quantity}).`
         );
       }
+      if (!product_id) throw new Error(`Item #${idx}: Produk belum dipilih.`);
+      if (!location_id) throw new Error(`Item #${idx}: Lokasi belum dipilih.`);
+      if (!stock_status_id)
+        throw new Error(`Item #${idx}: Status Stok belum dipilih.`);
 
       // 2a. Cek Stok Dulu & Ambil AVERAGE COST saat ini
       const stockCheck = await client.query(
@@ -231,16 +255,18 @@ exports.createTransactionOut = async (req, res) => {
         [product_id, location_id]
       );
       const currentStock = stockCheck.rows[0];
-      const currentQty = currentStock?.quantity || 0;
+      const currentQty = parseFloat(currentStock?.quantity || 0);
 
       if (currentQty < quantity) {
         throw new Error(
-          `Stok tidak cukup di lokasi asal. Sisa: ${currentQty}, Diminta: ${quantity}`
+          `Item #${idx}: Stok tidak cukup di lokasi ini. (Tersedia: ${currentQty.toFixed(
+            2
+          )}, Diminta: ${quantity.toFixed(2)})`
         );
       }
 
       // HPP saat ini adalah Average Cost di stock_levels
-      const purchasePriceAtTrans = currentStock.average_cost;
+      const purchasePriceAtTrans = parseFloat(currentStock?.average_cost || 0);
 
       // 2b. Menyimpan detail di transaction_items (purchase_price_at_trans = HPP Rata-Rata)
       await client.query(

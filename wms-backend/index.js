@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config(); // WMS Backend Service
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
@@ -27,15 +27,18 @@ const PORT = process.env.PORT || 5000;
 app.use(helmet());
 
 // Rate Limiting
+const compression = require("compression"); // Import compression
+
+// Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 menit
-  max: 100, // Batasi setiap IP hingga 100 permintaan per windowMs
-  message:
-    "Terlalu banyak permintaan dari IP ini, silakan coba lagi setelah 15 menit",
+  windowMs: 1 * 60 * 1000,
+  max: 10000,
+  message: "Terlalu banyak permintaan, santai dulu bang.",
 });
 app.use(limiter);
 
 // Middleware
+app.use(compression()); // Gunakan compression
 app.use(cors());
 app.use(express.json());
 

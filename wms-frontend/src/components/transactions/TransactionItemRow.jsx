@@ -1,6 +1,11 @@
 import React from "react";
 import Select from "react-select";
 import AsyncSelect from "react-select/async";
+import Input from "../common/Input";
+import Button from "../common/Button";
+import Card from "../common/Card";
+
+import { formatCurrency } from "../../utils/formatters";
 
 const TransactionItemRow = ({
   index,
@@ -16,18 +21,9 @@ const TransactionItemRow = ({
   itemStockInfo,
   fetchStockInfo,
 }) => {
-  // Helper untuk format mata uang
-  const formatCurrency = (amount) => {
-    return `Rp ${parseFloat(amount || 0).toLocaleString("id-ID", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    })}`;
-  };
-
-  // Helper untuk menampilkan error
   const ErrorMessage = ({ error }) => {
     return error ? (
-      <p className="text-red-500 text-xs mt-1">{error.message}</p>
+      <p className="text-red-500 text-xs mt-1 font-medium">{error.message}</p>
     ) : null;
   };
 
@@ -40,30 +36,51 @@ const TransactionItemRow = ({
     label: s.name,
   }));
 
-  // Watch values for this specific row
   const watchedProduct = watch(`items.${index}.product`);
   const watchedLocation = watch(`items.${index}.location`);
 
+  const customSelectStyles = {
+    control: (base) => ({
+      ...base,
+      backgroundColor: "rgba(255, 255, 255, 0.5)",
+      borderColor: "#e5e7eb",
+      borderRadius: "0.75rem",
+      padding: "2px",
+      minHeight: "42px",
+      "&:hover": { borderColor: "#cbd5e1" },
+      boxShadow: "none",
+    }),
+    menu: (base) => ({
+      ...base,
+      borderRadius: "0.75rem",
+      overflow: "hidden",
+      zIndex: 20,
+    }),
+  };
+
   return (
-    <div className="p-4 border rounded-lg mb-4 bg-white shadow-sm">
-      <div className="flex justify-between items-start mb-3">
-        <h3 className="text-lg font-semibold text-blue-600">
+    <Card className="!p-5 border border-indigo-50 shadow-md relative overflow-visible group transition-all hover:shadow-lg">
+      {/* Row Header */}
+      <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+        <h3 className="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
           Item #{index + 1}
         </h3>
-        <button
+        <Button
           type="button"
           onClick={() => remove(index)}
-          className="text-red-500 hover:text-red-700 font-bold"
+          variant="danger"
+          size="sm"
+          className="!py-1 !px-3 !text-xs opacity-70 group-hover:opacity-100 transition-opacity"
         >
-          Hapus
-        </button>
+          Hapus Item 🗑️
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
         {/* 1. Produk */}
-        <div className="col-span-4">
-          <label className="block text-xs font-medium text-gray-700">
-            Produk *
+        <div className="col-span-12 md:col-span-4">
+          <label className="block text-xs font-bold text-gray-700 mb-1">
+            Produk <span className="text-red-500">*</span>
           </label>
           <AsyncSelect
             loadOptions={loadProductOptions}
@@ -73,7 +90,6 @@ const TransactionItemRow = ({
               setValue(`items.${index}.product`, option, {
                 shouldValidate: true,
               });
-              // Auto-fill harga berdasarkan tipe transaksi
               if (transactionType === "IN") {
                 setValue(
                   `items.${index}.purchasePrice`,
@@ -83,16 +99,17 @@ const TransactionItemRow = ({
                 fetchStockInfo(index, option?.value, watchedLocation?.value);
               }
             }}
-            placeholder="Cari Produk..."
-            classNamePrefix="react-select"
+            placeholder="Cari Produk (SKU/Nama)..."
+            styles={customSelectStyles}
+            className="text-sm"
           />
           <ErrorMessage error={errors.items?.[index]?.product} />
         </div>
 
         {/* 2. Lokasi */}
-        <div className="col-span-3">
-          <label className="block text-xs font-medium text-gray-700">
-            Lokasi *
+        <div className="col-span-12 md:col-span-3">
+          <label className="block text-xs font-bold text-gray-700 mb-1">
+            Lokasi <span className="text-red-500">*</span>
           </label>
           <Select
             options={locationOptions}
@@ -104,15 +121,16 @@ const TransactionItemRow = ({
               fetchStockInfo(index, watchedProduct?.value, option?.value);
             }}
             placeholder="Pilih Lokasi"
-            classNamePrefix="react-select"
+            styles={customSelectStyles}
+            className="text-sm"
           />
           <ErrorMessage error={errors.items?.[index]?.location} />
         </div>
 
         {/* 3. Status Stok */}
-        <div className="col-span-3">
-          <label className="block text-xs font-medium text-gray-700">
-            Status Stok *
+        <div className="col-span-12 md:col-span-3">
+          <label className="block text-xs font-bold text-gray-700 mb-1">
+            Status Stok <span className="text-red-500">*</span>
           </label>
           <Select
             options={statusOptions}
@@ -122,112 +140,86 @@ const TransactionItemRow = ({
                 shouldValidate: true,
               })
             }
-            placeholder="Pilih Status"
-            classNamePrefix="react-select"
+            placeholder="Kondisi Item"
+            styles={customSelectStyles}
+            className="text-sm"
           />
           <ErrorMessage error={errors.items?.[index]?.stockStatus} />
         </div>
 
         {/* 4. Kuantitas */}
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-gray-700">
-            Jumlah *
-          </label>
-          <input
+        <div className="col-span-12 md:col-span-2">
+          <Input
+            label="Jumlah *"
             type="number"
             min="1"
             {...register(`items.${index}.quantity`, { valueAsNumber: true })}
-            className={`w-full px-3 py-2 border rounded-md shadow-sm ${
-              errors.items?.[index]?.quantity
-                ? "border-red-500"
-                : "border-gray-300"
-            }`}
+            error={errors.items?.[index]?.quantity?.message}
+            className="!text-center font-bold"
           />
-          <ErrorMessage error={errors.items?.[index]?.quantity} />
-          {/* Tampilkan stok tersedia untuk OUT */}
           {transactionType === "OUT" && (
-            <p className="text-xs text-yellow-700 mt-1">
-              Stok Asal: {itemStockInfo[index]?.availableStock || 0} unit
+            <p className="text-[10px] text-orange-600 mt-1 font-medium bg-orange-50 px-2 py-0.5 rounded text-center">
+              Stok: {itemStockInfo[index]?.availableStock || 0}
             </p>
           )}
         </div>
 
-        {/* --- HARGA (Kondisional) --- */}
-
-        {/* 5A. Harga Beli (Hanya untuk IN) */}
+        {/* --- HARGA --- */}
         {transactionType === "IN" && (
-          <div className="col-span-4">
-            <label className="block text-xs font-medium text-gray-700">
-              Harga Beli / Unit *
-            </label>
-            <input
+          <div className="col-span-12 md:col-span-4">
+            <Input
+              label="Harga Beli / Unit *"
               type="number"
               step="0.01"
               min="0"
               {...register(`items.${index}.purchasePrice`, {
                 valueAsNumber: true,
               })}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm ${
-                errors.items?.[index]?.purchasePrice
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
+              error={errors.items?.[index]?.purchasePrice?.message}
+              startIcon="Rp"
             />
-            <ErrorMessage error={errors.items?.[index]?.purchasePrice} />
           </div>
         )}
 
-        {/* 5B. Harga Jual (Hanya untuk OUT) */}
         {transactionType === "OUT" && (
-          <div className="col-span-4">
-            <label className="block text-xs font-medium text-gray-700">
-              Harga Jual / Unit *
-            </label>
-            <input
+          <div className="col-span-12 md:col-span-4">
+            <Input
+              label="Harga Jual / Unit *"
               type="number"
               step="0.01"
               min="0"
               {...register(`items.${index}.sellingPrice`, {
                 valueAsNumber: true,
               })}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm ${
-                errors.items?.[index]?.sellingPrice
-                  ? "border-red-500"
-                  : "border-gray-300"
-              }`}
+              error={errors.items?.[index]?.sellingPrice?.message}
+              startIcon="Rp"
             />
-            <ErrorMessage error={errors.items?.[index]?.sellingPrice} />
-            <p className="text-xs text-green-700 mt-1">
+            <p className="text-[10px] text-emerald-600 mt-1 font-medium text-right">
               HPP Avg: {formatCurrency(itemStockInfo[index]?.currentAvgCost)}
             </p>
           </div>
         )}
 
         {/* 6. Batch Number */}
-        <div className="col-span-4">
-          <label className="block text-xs font-medium text-gray-700">
-            Batch Number
-          </label>
-          <input
+        <div className="col-span-12 md:col-span-4">
+          <Input
+            label="Batch Number"
             type="text"
             {...register(`items.${index}.batchNumber`)}
-            className="w-full px-3 py-2 border rounded-md shadow-sm"
+            placeholder="Opsional"
           />
         </div>
 
         {/* 7. Expiry Date */}
-        <div className="col-span-4">
-          <label className="block text-xs font-medium text-gray-700">
-            Expiry Date
-          </label>
-          <input
+        <div className="col-span-12 md:col-span-4">
+          <Input
+            label="Expiry Date"
             type="date"
             {...register(`items.${index}.expiryDate`)}
-            className="w-full px-3 py-2 border rounded-md shadow-sm"
           />
         </div>
       </div>
-    </div>
+    </Card>
   );
 };
 

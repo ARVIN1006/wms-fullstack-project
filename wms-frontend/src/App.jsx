@@ -11,29 +11,38 @@ import { useAuth } from "./context/AuthContext";
 
 const queryClient = new QueryClient();
 
-// Halaman
+// Halaman,
 import Navbar from "./components/Navbar";
-import Dashboard from "./pages/Dashboard";
-import ProductList from "./pages/ProductList";
-import SupplierList from "./pages/SupplierList";
-import LocationList from "./pages/LocationList";
-import CustomerList from "./pages/CustomerList";
-import MovementForm from "./pages/MovementForm";
-import TransactionForm from "./pages/TransactionForm";
-import Reports from "./pages/Reports";
-import StockOpname from "./pages/StockOpname";
 
-// Rute Laporan
-import MovementReport from "./pages/MovementReport";
-import PerformanceReport from "./pages/PerformanceReport";
-import FinancialReport from "./pages/FinancialReport";
-import UserActivityReport from "./pages/UserActivityReport";
-import CustomerOrderReport from "./pages/CustomerOrderReport";
-import StatusInventoryReport from "./pages/StatusInventoryReport";
+// Dashboard
+import Dashboard from "./pages/dashboard/Dashboard";
 
-import LoginPage from "./pages/Login";
-import AdminControl from "./pages/AdminControl";
-import Profile from "./pages/Profile";
+// Auth
+import LoginPage from "./pages/auth/Login";
+import AdminControl from "./pages/auth/AdminControl";
+import Profile from "./pages/auth/Profile";
+
+// Inventory
+import ProductList from "./pages/inventory/ProductList";
+import MovementForm from "./pages/inventory/MovementForm";
+import StockOpname from "./pages/inventory/StockOpname";
+
+// Transactions
+import TransactionForm from "./pages/transactions/TransactionForm";
+
+// Master Data
+import SupplierList from "./pages/master/SupplierList";
+import LocationList from "./pages/master/LocationList";
+import CustomerList from "./pages/master/CustomerList";
+
+// Reports
+import Reports from "./pages/reports/Reports";
+import MovementReport from "./pages/reports/MovementReport";
+import PerformanceReport from "./pages/reports/PerformanceReport";
+import FinancialReport from "./pages/reports/FinancialReport";
+import UserActivityReport from "./pages/reports/UserActivityReport";
+import CustomerOrderReport from "./pages/reports/CustomerOrderReport";
+import StatusInventoryReport from "./pages/reports/StatusInventoryReport";
 
 function MainLayout() {
   const { isAuthenticated } = useAuth();
@@ -42,7 +51,7 @@ function MainLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gray-50 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-100 via-slate-50 to-emerald-50 text-gray-800">
       <Navbar />
       <div className="container mx-auto py-6">
         <Outlet />
