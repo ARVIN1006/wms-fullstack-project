@@ -26,6 +26,24 @@ exports.getCategories = async (req, res) => {
 };
 
 // GET /api/products - DENGAN AGGREGATE STOK, FILTER KATEGORI, SEARCH, PAGINATION, DAN SORTING
+// GET /api/products - DEBUG MODE (DUMMY DATA)
+exports.getProducts = async (req, res) => {
+  try {
+    // DEBUG: Bypass DB query to test route & auth
+    logger.info("DEBUG: getProducts called (bypassing DB)");
+    res.json({
+      products: [],
+      totalPages: 0,
+      currentPage: 1,
+      totalCount: 0,
+      debug: "This is dummy data from Vercel",
+    });
+  } catch (err) {
+    logger.error("FINAL ERROR IN GET /API/PRODUCTS: " + err.message);
+    res.status(500).send("Server Error: Gagal memuat data produk master.");
+  }
+};
+/* ORIGINAL CODE COMMENTED OUT FOR DEBUGGING
 exports.getProducts = async (req, res) => {
   try {
     const {
@@ -109,6 +127,7 @@ exports.getProducts = async (req, res) => {
     res.status(500).send("Server Error: Gagal memuat data produk master.");
   }
 };
+*/
 
 // GET /api/products/:id/main-stock - Mendapatkan stok di lokasi tertentu (untuk MovementForm)
 exports.getProductMainStock = async (req, res) => {
