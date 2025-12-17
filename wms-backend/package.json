@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "migrate": "knex migrate:latest",
+    "seed": "node seed.js",
     "test": "jest"
   },
   "keywords": [],

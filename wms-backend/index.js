@@ -87,6 +87,12 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  logger.info(`Server berjalan di http://localhost:${PORT}`);
-});
+// Export app for Vercel
+module.exports = app;
+
+// Only listen if running directly (not imported as a module by Vercel)
+if (require.main === module) {
+  server.listen(PORT, () => {
+    logger.info(`Server berjalan di http://localhost:${PORT}`);
+  });
+}
