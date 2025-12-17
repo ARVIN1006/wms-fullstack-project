@@ -27,65 +27,137 @@ exports.getCategories = async (req, res) => {
 
 // GET /api/products - DENGAN AGGREGATE STOK, FILTER KATEGORI, SEARCH, PAGINATION, DAN SORTING
 // GET /api/products
+// GET /api/products - DENGAN AGGREGATE STOK, FILTER KATEGORI, SEARCH, PAGINATION, DAN SORTING
 exports.getProducts = async (req, res) => {
   try {
-    const { search = "", page = 1, limit = 10 } = req.query;
+    const {
+      search = "",
+      page = 1,
+      limit = 10,
+      sortBy = "created_at",
+      sortOrder = "DESC",
+      categoryId,
+      supplierId,
+      stockFilter, // 'low', 'out', 'available'
+    } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    // SIMPLE QUERY FOR DEBUGGING PRODUCTION ISSUES
-    // Just select from products table directly first
-    console.log("DEBUG: Starting getProducts query...");
-    const query = knexDb("products");
+    // 1. Base Query menggunakan Knex
+    const query = knexDb("products as p")
+      .leftJoin("categories as c", "p.category_id", "c.id")
+      .leftJoin("suppliers as s", "p.main_supplier_id", "s.id")
+      // Left Join dengan Subquery Aggregate Stok untuk performa
+      .leftJoin(
+        knexDb("stock_levels")
+          .select("product_id")
+          .sum("quantity as total_quantity")
+          // Rumus Nilai Aset: Qty * Average Cost (dari tabel stock_levels)
+          // Jika average_cost 0 atau null, gunakan purchase_price produk sebagai estimasi
+          .sum(knexDb.raw("quantity * COALESCE(average_cost, 0)"))
+          .as("total_asset_value")
+          .groupBy("product_id")
+          .as("stk"),
+        "p.id",
+        "stk.product_id"
+      );
 
-    // Filter Search
+    // 2. Select Columns
+    query.select(
+      "p.id",
+      "p.sku",
+      "p.name",
+      "p.description",
+      "p.unit",
+      "p.purchase_price",
+      "p.selling_price",
+      "p.min_stock",
+      "p.volume_m3",
+      "p.category_id",
+      "p.main_supplier_id",
+      "p.created_at",
+      "p.barcode",
+      "c.name as category_name",
+      "s.name as supplier_name",
+      // Coalesce stok null menjadi 0
+      knexDb.raw("COALESCE(stk.total_quantity, 0) as total_quantity_in_stock"),
+      knexDb.raw("COALESCE(stk.total_asset_value, 0) as total_value_asset")
+    );
+
+    // 3. Apply Filters
     if (search) {
-      console.log(`DEBUG: Filtering by search: ${search}`);
       query.where((builder) => {
         builder
-          .where("sku", "ilike", `%${search}%`)
-          .orWhere("name", "ilike", `%${search}%`);
+          .where("p.sku", "ilike", `%${search}%`)
+          .orWhere("p.name", "ilike", `%${search}%`)
+          .orWhere("p.description", "ilike", `%${search}%`);
       });
     }
 
-    // Clone for count
-    console.log("DEBUG: Executing count query...");
-    const countQuery = query.clone().count("id as count").first();
-    const countResult = await countQuery;
-    console.log("DEBUG: Count result:", countResult);
+    if (categoryId) {
+      query.where("p.category_id", categoryId);
+    }
 
-    const totalCount = parseInt(countResult?.count || 0, 10);
+    if (supplierId) {
+      query.where("p.main_supplier_id", supplierId);
+    }
+
+    // Filter Stok (Low Stock / Out of Stock)
+    if (stockFilter) {
+      if (stockFilter === "out") {
+        query.where(knexDb.raw("COALESCE(stk.total_quantity, 0)"), "<=", 0);
+      } else if (stockFilter === "low") {
+        // Low Stock: 0 < Qty <= Min Stock
+        query
+          .where(knexDb.raw("COALESCE(stk.total_quantity, 0)"), ">", 0)
+          .andWhere(
+            knexDb.raw("COALESCE(stk.total_quantity, 0)"),
+            "<=",
+            knexDb.ref("p.min_stock")
+          );
+      } else if (stockFilter === "available") {
+        query.where(knexDb.raw("COALESCE(stk.total_quantity, 0)"), ">", 0);
+      }
+    }
+
+    // 4. Hitung Total Data (untuk Pagination) - Clone query sebelum limit/offset
+    // Menggunakan trik count wrapper agar tidak amburadul karena group by
+    const countQuery = knexDb
+      .from(query.clone().as("count_query"))
+      .count("* as total")
+      .first();
+
+    // Perbaikan logic sorting
+    let orderColumn = sortBy;
+    if (sortBy === "category_name") orderColumn = "c.name";
+    else if (sortBy === "supplier_name") orderColumn = "s.name";
+    else if (sortBy === "stock") orderColumn = "total_quantity_in_stock";
+    else if (sortBy === "value") orderColumn = "total_value_asset";
+    else if (!ALLOWED_SORT_FIELDS.includes(sortBy))
+      orderColumn = "p.created_at"; // Fallback aman
+
+    // 5. Apply Sorting & Pagination
+    query.orderBy(
+      orderColumn,
+      sortOrder.toLowerCase() === "asc" ? "asc" : "desc"
+    );
+    query.limit(limit).offset(offset);
+
+    // Eksekusi Parallel
+    const [products, countResult] = await Promise.all([query, countQuery]);
+
+    const totalCount = parseInt(countResult?.total || 0, 10);
     const totalPages = Math.ceil(totalCount / parseInt(limit));
 
-    // Get Data
-    console.log("DEBUG: Executing main select query...");
-    const products = await query
-      .select("*") // Select ALL columns simply
-      .orderBy("created_at", "desc")
-      .limit(limit)
-      .offset(offset);
-
-    console.log(`DEBUG: Query success, found ${products.length} products`);
-
-    // Map manually to avoid frontend breaking (provide default/null for joined fields)
-    const mappedProducts = products.map((p) => ({
-      ...p,
-      supplier_name: "Loading...", // Placeholder
-      category_name: "Loading...",
-      total_quantity_in_stock: 0, // Placeholder
-      total_value_asset: 0,
-    }));
-
     res.json({
-      products: mappedProducts,
+      products,
       totalPages,
       currentPage: parseInt(page, 10),
       totalCount,
     });
   } catch (err) {
     logger.error("FINAL ERROR IN GET /API/PRODUCTS: " + err.message);
-    // Send ACTUAL error message to frontend to see it in Network Tab
-    res.status(500).send("Server Error: " + err.message);
+    res.status(500).send("Server Error: Gagal memuat data produk master.");
   }
 };
 

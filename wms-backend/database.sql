@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS locations (
 CREATE TABLE IF NOT EXISTS products (
     id SERIAL PRIMARY KEY,
     sku VARCHAR(50) UNIQUE NOT NULL,
+    barcode VARCHAR(100), -- BARU: untuk scanner
     name VARCHAR(255) NOT NULL,
     description TEXT,
     unit VARCHAR(20),
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS products (
     purchase_price NUMERIC(10, 2) DEFAULT 0.00,
     selling_price NUMERIC(10, 2) DEFAULT 0.00,
     main_supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL, 
+    min_stock INTEGER DEFAULT 10, -- BARU: untuk notifikasi low stock
     volume_m3 NUMERIC(10, 4) DEFAULT 0.0100,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -115,13 +117,17 @@ CREATE TABLE IF NOT EXISTS transaction_items (
     selling_price_at_trans NUMERIC(10, 2) DEFAULT 0.00    -- BARU
 );
 
--- Tabel Stock Levels (Merujuk Products, Locations) - DENGAN average_cost
+-- Tabel Stock Levels (Merujuk Products, Locations) - DENGAN average_cost & Batch
 CREATE TABLE IF NOT EXISTS stock_levels (
+    id SERIAL PRIMARY KEY, -- BARU: PK sendiri karena batch bikin duplikat prod/loc
     product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
     location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,
     quantity INTEGER NOT NULL DEFAULT 0,
-    average_cost NUMERIC(10, 2) DEFAULT 0.00, -- BARU: untuk melacak HPP rata-rata per lokasi
-    PRIMARY KEY (product_id, location_id)
+    average_cost NUMERIC(10, 2) DEFAULT 0.00, -- untuk melacak HPP rata-rata
+    batch_number VARCHAR(100), -- BARU: Support Batch
+    expiry_date DATE, -- BARU: Support Expiry
+    -- Constraint Unik supaya tidak double entri untuk batch yang sama di lokasi yang sama
+    CONSTRAINT unique_stock_entry UNIQUE NULLS NOT DISTINCT (product_id, location_id, batch_number)
 );
 
 -- #################################################
@@ -145,7 +151,6 @@ CREATE INDEX IF NOT EXISTS idx_ti_stock_status_id ON transaction_items (stock_st
 
 -- Indexing untuk tabel Movements
 CREATE INDEX IF NOT EXISTS idx_movements_date ON movements (date);
-CREATE INDEX IF NOT EXISTS idx_movements_product_id ON movements (product_id); -- FIXED: Menghapus CREATE ganda
 CREATE INDEX IF NOT EXISTS idx_movements_from_loc ON movements (from_location_id);
 CREATE INDEX IF NOT EXISTS idx_movements_to_loc ON movements (to_location_id);
 

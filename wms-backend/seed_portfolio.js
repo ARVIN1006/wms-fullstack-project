@@ -373,7 +373,7 @@ class PortfolioSeeder {
         await this.client.query(
           `INSERT INTO stock_levels (product_id, location_id, quantity, average_cost, batch_number)
              VALUES ($1, $2, $3, $4, $5)`,
-          [newQty, newCost, productId, locationId, batchVal]
+          [productId, locationId, newQty, newCost, batchVal]
         );
       }
     }
