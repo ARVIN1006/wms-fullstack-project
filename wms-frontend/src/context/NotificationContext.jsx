@@ -17,10 +17,22 @@ export function NotificationProvider({ children }) {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await axios.get("/api/notifications/alerts");
+      // Explicitly attach token to ensure it's sent, overriding defaults if needed
+      const config = {
+        headers: {
+          "x-auth-token": token,
+        },
+      };
+      const res = await axios.get("/api/notifications/alerts", config);
       setAlerts(res.data);
     } catch (err) {
-      console.error("Failed to fetch notifications", err);
+      if (err.response && err.response.status === 401) {
+        // Token expired or invalid. AuthContext handles logout.
+        // We suppress the error here to avoid console noise during background polling.
+        console.warn("Notification fetch unauthorized - waiting for re-auth");
+      } else {
+        console.error("Failed to fetch notifications", err);
+      }
     } finally {
       setLoading(false);
     }

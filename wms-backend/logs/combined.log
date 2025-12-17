@@ -94,3 +94,9 @@
 {"level":"info","message":"Server berjalan di http://localhost:5000","service":"wms-backend","timestamp":"2025-12-16 21:58:16"}
 {"level":"info","message":"🔌 Seorang pengguna terhubung (Socket.IO)","service":"wms-backend","timestamp":"2025-12-16 21:58:32"}
 {"level":"info","message":"❌ Pengguna terputus","service":"wms-backend","timestamp":"2025-12-16 21:58:37"}
+{"level":"info","message":"Server berjalan di http://localhost:5000","service":"wms-backend","timestamp":"2025-12-17 06:59:08"}
+{"level":"info","message":"🔌 Seorang pengguna terhubung (Socket.IO)","service":"wms-backend","timestamp":"2025-12-17 06:59:18"}
+{"level":"info","message":"❌ Pengguna terputus","service":"wms-backend","timestamp":"2025-12-17 07:00:16"}
+{"level":"error","message":"ERROR IN NOTIFICATIONS: kolom p.min_stock belum ada","service":"wms-backend","timestamp":"2025-12-17 07:04:39"}
+{"level":"info","message":"🔌 Seorang pengguna terhubung (Socket.IO)","service":"wms-backend","timestamp":"2025-12-17 07:04:39"}
+{"level":"info","message":"❌ Pengguna terputus","service":"wms-backend","timestamp":"2025-12-17 07:04:47"}
