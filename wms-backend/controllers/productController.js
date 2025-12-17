@@ -26,108 +26,60 @@ exports.getCategories = async (req, res) => {
 };
 
 // GET /api/products - DENGAN AGGREGATE STOK, FILTER KATEGORI, SEARCH, PAGINATION, DAN SORTING
-// GET /api/products - DEBUG MODE (DUMMY DATA)
+// GET /api/products
 exports.getProducts = async (req, res) => {
   try {
-    // DEBUG: Bypass DB query to test route & auth
-    logger.info("DEBUG: getProducts called (bypassing DB)");
-    res.json({
-      products: [],
-      totalPages: 0,
-      currentPage: 1,
-      totalCount: 0,
-      debug: "This is dummy data from Vercel",
-    });
-  } catch (err) {
-    logger.error("FINAL ERROR IN GET /API/PRODUCTS: " + err.message);
-    res.status(500).send("Server Error: Gagal memuat data produk master.");
-  }
-};
-/* ORIGINAL CODE COMMENTED OUT FOR DEBUGGING
-exports.getProducts = async (req, res) => {
-  try {
-    const {
-      search = "",
-      page = 1,
-      limit = 10,
-      categoryId,
-      sortBy = "created_at",
-      sortOrder = "DESC",
-    } = req.query;
+    const { search = "", page = 1, limit = 10 } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    const sortField = ALLOWED_SORT_FIELDS.includes(sortBy)
-      ? sortBy
-      : "created_at";
-    const order = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
 
-    // Base query
-    const query = knexDb("products as p")
-      .leftJoin("suppliers as s", "p.main_supplier_id", "s.id")
-      .leftJoin("categories as c", "p.category_id", "c.id")
-      .leftJoin("stock_levels as sl", "p.id", "sl.product_id");
+    // SIMPLE QUERY FOR DEBUGGING PRODUCTION ISSUES
+    // Just select from products table directly first
+    const query = knexDb("products");
 
-    // Filter
+    // Filter Search
     if (search) {
       query.where((builder) => {
         builder
-          .where("p.sku", "ilike", `%${search}%`)
-          .orWhere("p.name", "ilike", `%${search}%`);
+          .where("sku", "ilike", `%${search}%`)
+          .orWhere("name", "ilike", `%${search}%`);
       });
     }
 
-    if (categoryId) {
-      query.where("p.category_id", categoryId);
-    }
-
-    // Clone for count - SIMPLIFIED FOR STABILITY
-    // countDistinct can be problematic with certain Knex/PG versions
-    const countResult = await query.clone().countDistinct("p.id as count");
-
-    // Handle array response or object response
-    const totalCount = parseInt(
-      (countResult[0] && countResult[0].count) || 0,
-      10
-    );
+    // Clone for count
+    const countQuery = query.clone().count("id as count").first();
+    const countResult = await countQuery;
+    const totalCount = parseInt(countResult?.count || 0, 10);
     const totalPages = Math.ceil(totalCount / parseInt(limit));
 
-    // Select and Group
+    // Get Data
     const products = await query
-      .select(
-        "p.id",
-        "p.sku",
-        "p.name",
-        "p.purchase_price",
-        "p.selling_price",
-        "p.unit",
-        "p.category_id",
-        "p.created_at",
-        "p.volume_m3",
-        "s.name as supplier_name",
-        "c.name as category_name",
-        knexDb.raw("COALESCE(SUM(sl.quantity), 0) as total_quantity_in_stock"),
-        knexDb.raw(
-          "COALESCE(SUM(sl.quantity * sl.average_cost), 0) as total_value_asset"
-        )
-        // Removed complex subquery for main_location to reduce load
-      )
-      .groupBy("p.id", "s.name", "c.name")
-      .orderBy(`p.${sortField}`, order)
+      .select("*") // Select ALL columns simply
+      .orderBy("created_at", "desc")
       .limit(limit)
       .offset(offset);
 
+    // Map manually to avoid frontend breaking (provide default/null for joined fields)
+    const mappedProducts = products.map((p) => ({
+      ...p,
+      supplier_name: "Loading...", // Placeholder
+      category_name: "Loading...",
+      total_quantity_in_stock: 0, // Placeholder
+      total_value_asset: 0,
+    }));
+
     res.json({
-      products,
+      products: mappedProducts,
       totalPages,
       currentPage: parseInt(page, 10),
       totalCount,
     });
   } catch (err) {
     logger.error("FINAL ERROR IN GET /API/PRODUCTS: " + err.message);
-    res.status(500).send("Server Error: Gagal memuat data produk master.");
+    // Send ACTUAL error message to frontend to see it in Network Tab
+    res.status(500).send("Server Error: " + err.message);
   }
 };
-*/
 
 // GET /api/products/:id/main-stock - Mendapatkan stok di lokasi tertentu (untuk MovementForm)
 exports.getProductMainStock = async (req, res) => {
