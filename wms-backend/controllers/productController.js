@@ -35,10 +35,12 @@ exports.getProducts = async (req, res) => {
 
     // SIMPLE QUERY FOR DEBUGGING PRODUCTION ISSUES
     // Just select from products table directly first
+    console.log("DEBUG: Starting getProducts query...");
     const query = knexDb("products");
 
     // Filter Search
     if (search) {
+      console.log(`DEBUG: Filtering by search: ${search}`);
       query.where((builder) => {
         builder
           .where("sku", "ilike", `%${search}%`)
@@ -47,17 +49,23 @@ exports.getProducts = async (req, res) => {
     }
 
     // Clone for count
+    console.log("DEBUG: Executing count query...");
     const countQuery = query.clone().count("id as count").first();
     const countResult = await countQuery;
+    console.log("DEBUG: Count result:", countResult);
+
     const totalCount = parseInt(countResult?.count || 0, 10);
     const totalPages = Math.ceil(totalCount / parseInt(limit));
 
     // Get Data
+    console.log("DEBUG: Executing main select query...");
     const products = await query
       .select("*") // Select ALL columns simply
       .orderBy("created_at", "desc")
       .limit(limit)
       .offset(offset);
+
+    console.log(`DEBUG: Query success, found ${products.length} products`);
 
     // Map manually to avoid frontend breaking (provide default/null for joined fields)
     const mappedProducts = products.map((p) => ({
