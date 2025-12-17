@@ -44,6 +44,16 @@ import UserActivityReport from "./pages/reports/UserActivityReport";
 import CustomerOrderReport from "./pages/reports/CustomerOrderReport";
 import StatusInventoryReport from "./pages/reports/StatusInventoryReport";
 
+// Orders
+import PurchaseOrderList from "./pages/orders/PurchaseOrderList";
+import PurchaseOrderForm from "./pages/orders/PurchaseOrderForm";
+import PurchaseOrderDetail from "./pages/orders/PurchaseOrderDetail";
+import SalesOrderList from "./pages/orders/SalesOrderList";
+import SalesOrderForm from "./pages/orders/SalesOrderForm";
+import SalesOrderDetail from "./pages/orders/SalesOrderDetail";
+import BarcodeGenerator from "./pages/admin/BarcodeGenerator";
+import AuditLogList from "./pages/admin/AuditLogList";
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -67,6 +77,27 @@ function App() {
                 <Route path="/customers" element={<CustomerList />} />
                 <Route path="/movements" element={<MovementForm />} />
                 <Route path="/stock-opname" element={<StockOpname />} />
+                {/* ORDER MANAGEMENT ROUTING */}
+                <Route
+                  path="/orders/purchase"
+                  element={<PurchaseOrderList />}
+                />
+                <Route
+                  path="/orders/purchase/new"
+                  element={<PurchaseOrderForm />}
+                />
+                <Route
+                  path="/orders/purchase/:id"
+                  element={<PurchaseOrderDetail />}
+                />
+                <Route path="/orders/sales" element={<SalesOrderList />} />
+                <Route path="/orders/sales/new" element={<SalesOrderForm />} />
+                <Route
+                  path="/orders/sales/:id"
+                  element={<SalesOrderDetail />}
+                />
+                <Route path="/admin/barcode" element={<BarcodeGenerator />} />
+                <Route path="/admin/audit-logs" element={<AuditLogList />} />
                 {/* PERBAIKAN ROUTING TRANSAKSI */}
                 {/* 1. Redirect /transactions ke /transactions/in (Default) */}
                 <Route

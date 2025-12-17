@@ -115,6 +115,14 @@ function Dashboard() {
     financialData?.valuation?.total_asset_value || 0
   );
 
+  const { data: pendingCounts } = useQuery({
+    queryKey: ["pendingCounts"],
+    queryFn: async () => {
+      const res = await axios.get("/api/orders/pending-counts");
+      return res.data;
+    },
+  });
+
   const loading = stocksLoading && !stocksData;
 
   useEffect(() => {
@@ -244,6 +252,37 @@ function Dashboard() {
           </Badge>
           <NotificationBell />
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {pendingCounts?.pending_po > 0 && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-xl shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📥</span>
+              <div>
+                <h3 className="font-bold">Purchase Orders Pending</h3>
+                <p className="text-xs opacity-70">Menunggu penerimaan barang</p>
+              </div>
+            </div>
+            <Badge variant="primary" className="text-lg px-3 py-1">
+              {pendingCounts.pending_po}
+            </Badge>
+          </div>
+        )}
+        {pendingCounts?.pending_so > 0 && (
+          <div className="bg-purple-50 border border-purple-200 text-purple-800 p-4 rounded-xl shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📤</span>
+              <div>
+                <h3 className="font-bold">Sales Orders Pending</h3>
+                <p className="text-xs opacity-70">Menunggu pengiriman barang</p>
+              </div>
+            </div>
+            <Badge className="bg-purple-200 text-purple-800 text-lg px-3 py-1">
+              {pendingCounts.pending_so}
+            </Badge>
+          </div>
+        )}
       </div>
 
       {lowStockItems.length > 0 && (

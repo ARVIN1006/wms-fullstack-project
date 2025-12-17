@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const logger = require("../config/logger");
+const { logAudit } = require("./auditController");
 
 // Fungsi untuk mendapatkan data stok saat ini
 async function getCurrentStockAndCost(client, productId, locationId) {
@@ -216,6 +217,12 @@ exports.createTransactionIn = async (req, res) => {
       type: "IN",
     });
 
+    logAudit(operator_id, "TRANSACTION_IN", "Transaction", transactionId, {
+      notes,
+      supplier_id,
+      products: items.map((i) => i.product_id),
+    });
+
     res.json({ msg: "Barang masuk berhasil dicatat!", transactionId });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -288,7 +295,7 @@ exports.createTransactionOut = async (req, res) => {
         `SELECT batch_number, quantity, expiry_date, average_cost 
          FROM stock_levels 
          WHERE product_id = $1 AND location_id = $2 AND quantity > 0
-         ORDER BY expiry_date ASC NULLS LAST, created_at ASC`,
+         ORDER BY expiry_date ASC NULLS LAST`,
         [product_id, location_id]
       );
 
@@ -365,6 +372,12 @@ exports.createTransactionOut = async (req, res) => {
     req.io.emit("new_activity", {
       message: "Aktivitas Outbound baru tercatat!",
       type: "OUT",
+    });
+
+    logAudit(operator_id, "TRANSACTION_OUT", "Transaction", transactionId, {
+      notes,
+      customer_id,
+      products: items.map((i) => i.product_id),
     });
 
     res.json({ msg: "Barang keluar berhasil dicatat!", transactionId });

@@ -192,6 +192,24 @@ function Navbar() {
               Dashboard
             </MainLink>
 
+            {/* Order Management Dropdown */}
+            <DropdownMenu title="Orders" menuName="orders" icon="📋">
+              <DropdownLink
+                to="/orders/purchase"
+                icon="📥"
+                isActive={location.pathname.includes("/orders/purchase")}
+              >
+                Purchase Orders
+              </DropdownLink>
+              <DropdownLink
+                to="/orders/sales"
+                icon="📤"
+                isActive={location.pathname.includes("/orders/sales")}
+              >
+                Sales Orders
+              </DropdownLink>
+            </DropdownMenu>
+
             {/* Transactions Dropdown */}
             <DropdownMenu title="Transaksi" menuName="transactions" icon="💸">
               <DropdownLink
@@ -228,6 +246,20 @@ function Navbar() {
                 className="text-yellow-700"
               >
                 Stock Opname
+              </DropdownLink>
+              <DropdownLink
+                to="/admin/barcode"
+                icon="🖨️"
+                isActive={location.pathname === "/admin/barcode"}
+              >
+                Cetak Label
+              </DropdownLink>
+              <DropdownLink
+                to="/admin/audit-logs"
+                icon="📜"
+                isActive={location.pathname === "/admin/audit-logs"}
+              >
+                Audit Logs
               </DropdownLink>
             </DropdownMenu>
 

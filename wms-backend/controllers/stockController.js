@@ -82,11 +82,10 @@ exports.getBatchSuggestions = async (req, res) => {
       SELECT 
         batch_number, 
         expiry_date, 
-        quantity, 
-        created_at
+        quantity
       FROM stock_levels
       WHERE product_id = $1 AND location_id = $2 AND quantity > 0
-      ORDER BY expiry_date ASC NULLS LAST, created_at ASC
+      ORDER BY expiry_date ASC NULLS LAST
     `;
     const result = await db.query(query, [productId, locationId]);
     res.json(result.rows);
@@ -135,28 +134,44 @@ exports.createOpname = async (req, res) => {
     const adjustmentQty = parseInt(adjustment_quantity, 10);
 
     if (!product_id || !location_id) {
-      await client.query("ROLLBACK");
       return res.status(400).json({ msg: "Produk dan Lokasi wajib diisi." });
     }
 
-    // 1. Update Stock Levels
+    // 1. Update Stock Levels (Batch-aware)
+    // Since we dropped the unique constraint on (product_id, location_id) alone,
+    // we must find the specific batchless row (batch_number IS NULL) to update, or insert a new one.
     if (adjustmentQty !== 0) {
-      await client.query(
-        `
-        INSERT INTO stock_levels (product_id, location_id, quantity)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (product_id, location_id)
-        DO UPDATE SET quantity = stock_levels.quantity + EXCLUDED.quantity
-      `,
-        [product_id, location_id, adjustmentQty]
+      const checkStock = await client.query(
+        "SELECT * FROM stock_levels WHERE product_id = $1 AND location_id = $2 AND batch_number IS NULL",
+        [product_id, location_id]
       );
 
+      if (checkStock.rows.length > 0) {
+        await client.query(
+          "UPDATE stock_levels SET quantity = quantity + $1 WHERE product_id = $2 AND location_id = $3 AND batch_number IS NULL",
+          [adjustmentQty, product_id, location_id]
+        );
+      } else {
+        await client.query(
+          "INSERT INTO stock_levels (product_id, location_id, quantity, batch_number) VALUES ($1, $2, $3, NULL)",
+          [product_id, location_id, adjustmentQty]
+        );
+      }
+
       // 2. Log to Transactions (Opname History)
+      // Determine type based on adjustment sign to satisfy constraint (IN/OUT)
+      const transType = adjustmentQty >= 0 ? "IN" : "OUT";
+      // Use absolute quantity for transaction items if needed, but here quantity is signed?
+      // Transaction items usually store positive quantity.
+      // Let's ensure we store positive quantity in items, and type indicates direction.
+      const absQty = Math.abs(adjustmentQty);
+
       const transRes = await client.query(
         `INSERT INTO transactions (type, notes, operator_id, process_start, process_end) 
-         VALUES ('OPNAME', $1, $2, NOW(), NOW()) RETURNING id`,
+         VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id`,
         [
-          `Opname: Fisik(${physical_count}) vs Sistem(${system_count}). Catatan: ${
+          transType,
+          `Opname Adjustment: Fisik(${physical_count}) vs Sistem(${system_count}). Notes: ${
             notes || "-"
           }`,
           operator_id,
@@ -164,11 +179,11 @@ exports.createOpname = async (req, res) => {
       );
       const transactionId = transRes.rows[0].id;
 
-      // 3. Log Transaction Item
+      // 3. Log Transaction Item (Always positive quantity for the item record)
       await client.query(
-        `INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [transactionId, product_id, location_id, adjustmentQty, 1] // 1 = Available/Good (Default)
+        `INSERT INTO transaction_items (transaction_id, product_id, location_id, quantity, stock_status_id, batch_number)
+         VALUES ($1, $2, $3, $4, $5, NULL)`,
+        [transactionId, product_id, location_id, absQty, 1] // 1 = Available/Good (Default)
       );
     }
 

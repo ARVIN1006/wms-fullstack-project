@@ -1,4 +1,4 @@
-require("dotenv").config(); // WMS Backend Service
+require("dotenv").config(); // WMS Backend Service - Restart Triggered Again
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
@@ -71,6 +71,8 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/movements", movementRoutes);
 app.use("/api/reports/financial", financialRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/orders", require("./routes/orderRoutes"));
+app.use("/api/audit-logs", require("./routes/auditRoutes"));
 
 app.get("/", (req, res) => {
   res.send("Halo! Server WMS sudah aktif 🚀");
