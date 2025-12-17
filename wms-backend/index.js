@@ -24,19 +24,25 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// VERCEL CONFIG: Trust Proxy is REQUIRED for Vercel
+// This fixes the "X-Forwarded-For" header error
+app.set("trust proxy", 1);
+
 // Middleware Keamanan
 app.use(helmet());
 
 // Rate Limiting
 const compression = require("compression"); // Import compression
 
-// Rate Limiting
+// RATE LIMITER DISABLED FOR STABILITY
+/*
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000,
   max: 10000,
   message: "Terlalu banyak permintaan, santai dulu bang.",
 });
 app.use(limiter);
+*/
 
 // Middleware
 app.use(compression()); // Gunakan compression
