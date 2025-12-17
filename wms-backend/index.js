@@ -75,13 +75,11 @@ app.use("/api/orders", require("./routes/orderRoutes"));
 app.use("/api/audit-logs", require("./routes/auditRoutes"));
 
 app.get("/", (req, res) => {
-  res
-    .status(200)
-    .json({
-      status: "OK",
-      message: "WMS Backend is Running",
-      timestamp: new Date(),
-    });
+  res.status(200).json({
+    status: "OK",
+    message: "WMS Backend is Running",
+    timestamp: new Date(),
+  });
 });
 
 // Debug Route to check DB connection
