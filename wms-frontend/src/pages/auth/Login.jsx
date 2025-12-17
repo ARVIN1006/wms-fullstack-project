@@ -68,6 +68,25 @@ function LoginPage() {
               placeholder="Masukkan password"
             />
 
+            {/* Demo Credentials Hint */}
+            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-xs text-indigo-800">
+              <p className="font-bold mb-1">🔍 Demo Account:</p>
+              <div className="flex justify-between">
+                <span>
+                  User:{" "}
+                  <code className="bg-white px-1 rounded border border-indigo-200">
+                    admin
+                  </code>
+                </span>
+                <span>
+                  Pass:{" "}
+                  <code className="bg-white px-1 rounded border border-indigo-200">
+                    password123
+                  </code>
+                </span>
+              </div>
+            </div>
+
             <Button
               type="submit"
               variant="primary"

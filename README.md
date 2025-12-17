@@ -4,6 +4,8 @@
 
 **[🚀 Live Demo](https://wms-project-4dtd.vercel.app/)**
 
+> **Demo Login:** `admin` / `password123`
+
 ![Dashboard Preview](./assets/Dashboard.png)
 
 ## 🌟 Key Features
