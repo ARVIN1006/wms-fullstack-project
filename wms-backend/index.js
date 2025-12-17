@@ -75,7 +75,24 @@ app.use("/api/orders", require("./routes/orderRoutes"));
 app.use("/api/audit-logs", require("./routes/auditRoutes"));
 
 app.get("/", (req, res) => {
-  res.send("Halo! Server WMS sudah aktif 🚀");
+  res
+    .status(200)
+    .json({
+      status: "OK",
+      message: "WMS Backend is Running",
+      timestamp: new Date(),
+    });
+});
+
+// Debug Route to check DB connection
+app.get("/api/health", async (req, res) => {
+  try {
+    const db = require("./config/db");
+    await db.query("SELECT 1");
+    res.json({ status: "OK", db: "Connected" });
+  } catch (error) {
+    res.status(500).json({ status: "Error", db: error.message });
+  }
 });
 
 // Logika Koneksi Socket.IO
