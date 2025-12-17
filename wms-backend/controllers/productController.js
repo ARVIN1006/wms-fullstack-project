@@ -62,33 +62,36 @@ exports.getProducts = async (req, res) => {
       query.where("p.category_id", categoryId);
     }
 
-    // Clone for count
-    // Note: countDistinct might return a string in Postgres
-    const countResult = await query
-      .clone()
-      .countDistinct("p.id as count")
-      .first();
-    const totalCount = parseInt(countResult?.count || 0, 10);
+    // Clone for count - SIMPLIFIED FOR STABILITY
+    // countDistinct can be problematic with certain Knex/PG versions
+    const countResult = await query.clone().countDistinct("p.id as count");
+
+    // Handle array response or object response
+    const totalCount = parseInt(
+      (countResult[0] && countResult[0].count) || 0,
+      10
+    );
     const totalPages = Math.ceil(totalCount / parseInt(limit));
 
     // Select and Group
     const products = await query
       .select(
-        "p.*",
+        "p.id",
+        "p.sku",
+        "p.name",
+        "p.purchase_price",
+        "p.selling_price",
+        "p.unit",
+        "p.category_id",
+        "p.created_at",
+        "p.volume_m3",
         "s.name as supplier_name",
         "c.name as category_name",
         knexDb.raw("COALESCE(SUM(sl.quantity), 0) as total_quantity_in_stock"),
         knexDb.raw(
           "COALESCE(SUM(sl.quantity * sl.average_cost), 0) as total_value_asset"
-        ),
-        knexDb.raw(`(
-          SELECT l.name 
-          FROM stock_levels sl_main
-          JOIN locations l ON sl_main.location_id = l.id
-          WHERE sl_main.product_id = p.id AND sl_main.quantity > 0
-          ORDER BY sl_main.quantity DESC
-          LIMIT 1
-        ) as main_location_name`)
+        )
+        // Removed complex subquery for main_location to reduce load
       )
       .groupBy("p.id", "s.name", "c.name")
       .orderBy(`p.${sortField}`, order)
