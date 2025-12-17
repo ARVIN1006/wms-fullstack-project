@@ -47,14 +47,14 @@ exports.getProducts = async (req, res) => {
       .leftJoin("suppliers as s", "p.main_supplier_id", "s.id")
       // Left Join dengan Subquery Aggregate Stok untuk performa
       .leftJoin(
-        knexDb("stock_levels")
-          .select("product_id")
-          .sum("quantity as total_quantity")
-          // Rumus Nilai Aset: Qty * Average Cost (dari tabel stock_levels)
-          // Jika average_cost 0 atau null, gunakan purchase_price produk sebagai estimasi
-          .select(knexDb.raw("SUM(quantity * COALESCE(average_cost, 0)) as total_asset_value"))
-          .groupBy("product_id")
-          .as("stk"),
+        knexDb.raw(`(
+          SELECT 
+            product_id, 
+            SUM(quantity) as total_quantity, 
+            SUM(quantity * COALESCE(average_cost, 0)) as total_asset_value 
+          FROM stock_levels 
+          GROUP BY product_id
+        ) as stk`),
         "p.id",
         "stk.product_id"
       );
