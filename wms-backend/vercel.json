@@ -9,10 +9,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "index.js"
+      "dest": "/index.js"
     }
-  ],
-  "env": {
-    "DB_SSL": "true"
-  }
+  ]
 }
