@@ -26,8 +26,6 @@ exports.getCategories = async (req, res) => {
 };
 
 // GET /api/products - DENGAN AGGREGATE STOK, FILTER KATEGORI, SEARCH, PAGINATION, DAN SORTING
-// GET /api/products
-// GET /api/products - DENGAN AGGREGATE STOK, FILTER KATEGORI, SEARCH, PAGINATION, DAN SORTING
 exports.getProducts = async (req, res) => {
   try {
     const {
@@ -54,7 +52,7 @@ exports.getProducts = async (req, res) => {
           .sum("quantity as total_quantity")
           // Rumus Nilai Aset: Qty * Average Cost (dari tabel stock_levels)
           // Jika average_cost 0 atau null, gunakan purchase_price produk sebagai estimasi
-          .sum({ total_asset_value: knexDb.raw("quantity * COALESCE(average_cost, 0)") })
+          .select(knexDb.raw("SUM(quantity * COALESCE(average_cost, 0)) as total_asset_value"))
           .groupBy("product_id")
           .as("stk"),
         "p.id",
