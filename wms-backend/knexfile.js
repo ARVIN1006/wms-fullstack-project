@@ -1,10 +1,11 @@
-```javascript
-// Safely attempt to load .env file (for local dev)
-// In Vercel, env vars are injected by the platform, so this might fail or be unnecessary
-try {
-  require("dotenv").config();
-} catch (error) {
-  console.log("Dotenv load failed (expected in production if not needed):", error.message);
+
+// Hanya load dotenv di development/local
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    require("dotenv").config();
+  } catch (error) {
+    console.error("Dotenv error:", error);
+  }
 }
 
 // Konfigurasi Database Robust untuk Vercel & Local
@@ -40,4 +41,3 @@ module.exports = {
   development: dbConfig,
   production: dbConfig, // Gunakan config yang SAMA untuk production
 };
-```;
