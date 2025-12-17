@@ -50,8 +50,8 @@ exports.getProducts = async (req, res) => {
         knexDb.raw(`(
           SELECT 
             product_id, 
-            SUM(quantity) as total_quantity, 
-            SUM(quantity * COALESCE(average_cost, 0)) as total_asset_value 
+            SUM(quantity) as "total_quantity", 
+            SUM(quantity * COALESCE(average_cost, 0)) as "total_asset_value" 
           FROM stock_levels 
           GROUP BY product_id
         ) as stk`),
