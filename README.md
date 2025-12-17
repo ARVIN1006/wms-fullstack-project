@@ -2,7 +2,7 @@
 
 > A full-stack, real-time inventory management solution built for modern logistics operations. Features advanced batch tracking, FIFO cost accounting, and live dashboard analytics.
 
-![Dashboard Preview](https://via.placeholder.com/800x400?text=WMS+Dashboard+Preview)
+![Dashboard Preview](./assets/Dashboard.png)
 
 ## 🌟 Key Features
 
@@ -55,52 +55,52 @@ Follow these steps to run the project locally.
 
 ### Installation
 
-1. **Clone the repository**
+1.  **Clone the repository**
 
-   ```bash
-   git clone https://github.com/yourusername/wms-fullstack-project.git
-   cd wms-fullstack-project
-   ```
+    ```bash
+    git clone https://github.com/yourusername/wms-fullstack-project.git
+    cd wms-fullstack-project
+    ```
 
-2. **Setup Backend**
+2.  **Setup Backend**
 
-   ```bash
-   cd wms-backend
-   npm install
+    ```bash
+    cd wms-backend
+    npm install
 
-   # Setup Environment Variables
-   cp .env.example .env
-   # Update .env with your PostgreSQL credentials
+    # Setup Environment Variables
+    cp .env.example .env
+    # Update .env with your PostgreSQL credentials
 
-   # Run Migrations & Seed Data
-   npm run migrate
-   npm run seed
+    # Run Migrations & Seed Data
+    npm run migrate
+    npm run seed
 
-   # Start Server
-   npm run dev
-   ```
+    # Start Server
+    npm run dev
+    ```
 
-3. **Setup Frontend**
+3.  **Setup Frontend**
 
-   ```bash
-   cd ../wms-frontend
-   npm install
-   npm run dev
-   ```
+    ```bash
+    cd ../wms-frontend
+    npm install
+    npm run dev
+    ```
 
-4. **Access Application**
-   Open `http://localhost:5173` in your browser.
-   - **Default Admin Login**: `admin` / `password123`
+4.  **Access Application**
+    Open `http://localhost:5173` in your browser.
+    - **Default Admin Login**: `admin` / `password123`
 
 ## 📸 Screenshots
 
-| Dashboard    | Stock List    |
-| ------------ | ------------- |
-| ![Dashboard] | ![Stock List] |
+| Dashboard                            | Stock List                               |
+| ------------------------------------ | ---------------------------------------- |
+| ![Dashboard](./assets/Dashboard.png) | ![Stock List](./assets/Product_list.png) |
 
-| Order Form    | Audit Logs    |
-| ------------- | ------------- |
-| ![Order Form] | ![Audit Logs] |
+| Order Form                             | Audit Logs                            |
+| -------------------------------------- | ------------------------------------- |
+| ![Order Form](./assets/Order_form.png) | ![Audit Logs](./assets/Audit_log.png) |
 
 ## 🤝 Contributing
 
