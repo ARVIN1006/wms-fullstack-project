@@ -2,6 +2,8 @@
 
 > A full-stack, real-time inventory management solution built for modern logistics operations. Features advanced batch tracking, FIFO cost accounting, and live dashboard analytics.
 
+**[🚀 Live Demo](https://wms-project-4dtd.vercel.app/)**
+
 ![Dashboard Preview](./assets/Dashboard.png)
 
 ## 🌟 Key Features
