@@ -54,8 +54,7 @@ exports.getProducts = async (req, res) => {
           .sum("quantity as total_quantity")
           // Rumus Nilai Aset: Qty * Average Cost (dari tabel stock_levels)
           // Jika average_cost 0 atau null, gunakan purchase_price produk sebagai estimasi
-          .sum(knexDb.raw("quantity * COALESCE(average_cost, 0)"))
-          .as("total_asset_value")
+          .sum({ total_asset_value: knexDb.raw("quantity * COALESCE(average_cost, 0)") })
           .groupBy("product_id")
           .as("stk"),
         "p.id",
