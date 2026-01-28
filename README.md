@@ -1,68 +1,68 @@
-# 🏭 Modern Warehouse Management System (WMS)
+# 🏭 Sistem Manajemen Gudang Modern (WMS)
 
-> A full-stack, real-time inventory management solution built for modern logistics operations. Features advanced batch tracking, FIFO cost accounting, and live dashboard analytics.
+> Solusi manajemen inventaris full-stack dan real-time yang dibangun untuk operasional logistik modern. Dilengkapi fitur pelacakan batch canggih, akuntansi biaya FIFO, dan analitik dashboard langsung.
 
-**[🚀 Live Demo](https://wms-project-4dtd.vercel.app/)**
+**[🚀 Demo Langsung (Live Demo)](https://wms-project-4dtd.vercel.app/)**
 
-> **Demo Login:** `admin` / `password123`
+> **Login Demo:** `admin` / `password123`
 
-![Dashboard Preview](./assets/Dashboard.png)
+![Pratinjau Dashboard](./assets/Dashboard.png)
 
-## 🌟 Key Features
+## 🌟 Fitur Utama
 
-### 📦 Advanced Inventory Control
+### 📦 Kontrol Inventaris Canggih
 
-- **Batch & Expiry Tracking**: Monitor stock freshness with precise batch-level tracking.
-- **FIFO & Average Costing**: Automatic COGS calculation using First-In-First-Out logic and Moving Average cost.
-- **Stock Opname**: Digital reconciliation of physical vs system stock with audit trails.
-- **Low Stock Alerts**: Real-time notifications when inventory dips below safety thresholds.
+- **Pelacakan Batch & Kedaluwarsa**: Pantau kesegaran stok dengan pelacakan tingkat batch yang presisi.
+- **Biaya FIFO & Rata-rata**: Perhitungan HPP (Harga Pokok Penjualan) otomatis menggunakan logika First-In-First-Out dan Moving Average.
+- **Stok Opname**: Rekonsiliasi digital antara stok fisik vs sistem dengan jejak audit.
+- **Peringatan Stok Rendah**: Notifikasi real-time saat inventaris turun di bawah ambang batas aman.
 
-### 🔄 Order Management
+### 🔄 Manajemen Pesanan
 
-- **Purchase Orders (PO)**: Complete procurement cycle from Draft -> Submitted -> Received.
-- **Sales Orders (SO)**: Streamlined fulfillment with automatic stock deduction and status updates.
-- **Goods Receipt & Shipment**: Validation checks to prevent shipping expired or locked stock.
+- **Purchase Orders (PO)**: Siklus pengadaan lengkap dari Draft -> Submitted -> Received.
+- **Sales Orders (SO)**: Pemenuhan pesanan yang efisien dengan pengurangan stok otomatis dan pembaruan status.
+- **Penerimaan & Pengiriman Barang**: Pengecekan validasi untuk mencegah pengiriman stok yang kedaluwarsa atau terkunci.
 
-### 📊 Real-Time Analytics
+### 📊 Analitik Real-Time
 
-- **Live Dashboard**: WebSocket-powered updates for incoming/outgoing activities.
-- **Financial Reports**: COGS, Gross Profit, and Inventory Valuation reports.
-- **Movement History**: Complete traceability of every item moving through the warehouse.
+- **Dashboard Langsung**: Pembaruan berbasis WebSocket untuk aktivitas masuk/keluar.
+- **Laporan Keuangan**: Laporan HPP, Laba Kotor, dan Valuasi Inventaris.
+- **Riwayat Pergerakan**: Pelacakan lengkap setiap item yang bergerak melalui gudang.
 
-## 🛠️ Tech Stack
+## 🛠️ Stack Teknologi
 
 **Frontend:**
 
-- **React 18**: Component-based UI with Hooks.
-- **Vite**: Lightning-fast build tool.
-- **Tailwind CSS**: Modern utility-first styling.
-- **Chart.js**: Interactive data visualization.
-- **Socket.io Client**: Real-time event handling.
+- **React 18**: UI berbasis komponen dengan Hooks.
+- **Vite**: Build tool super cepat.
+- **Tailwind CSS**: Styling utility-first modern.
+- **Chart.js**: Visualisasi data interaktif.
+- **Socket.io Client**: Penanganan event real-time.
 
 **Backend:**
 
-- **Node.js & Express**: Robust REST API architecture.
-- **PostgreSQL**: Relational database for complex data modeling.
-- **Knex.js**: SQL Query Builder & Migration manager.
-- **Socket.io**: Real-time server-client communication.
-- **Joi**: Schemas & Data validation.
+- **Node.js & Express**: Arsitektur REST API yang tangguh.
+- **PostgreSQL**: Database relasional untuk pemodelan data kompleks.
+- **Knex.js**: SQL Query Builder & Manajer Migrasi.
+- **Socket.io**: Komunikasi real-time server-client.
+- **Joi**: Skema & Validasi Data.
 
-## 🚀 Getting Started
+## 🚀 Memulai (Getting Started)
 
-Follow these steps to run the project locally.
+Ikuti langkah-langkah berikut untuk menjalankan proyek ini di lokal komputer Anda.
 
-### Prerequisites
+### Prasyarat
 
 - Node.js (v18+)
 - PostgreSQL (v14+)
-- npm or yarn
+- npm atau yarn
 
-### Installation
+### Instalasi
 
-1.  **Clone the repository**
+1.  **Clone repositori**
 
     ```bash
-    git clone https://github.com/yourusername/wms-fullstack-project.git
+    git clone https://github.com/ARVIN1006/wms-fullstack-project.git
     cd wms-fullstack-project
     ```
 
@@ -74,13 +74,13 @@ Follow these steps to run the project locally.
 
     # Setup Environment Variables
     cp .env.example .env
-    # Update .env with your PostgreSQL credentials
+    # Update .env dengan kredensial PostgreSQL Anda
 
-    # Run Migrations & Seed Data
+    # Jalankan Migrasi & Seed Data
     npm run migrate
     npm run seed
 
-    # Start Server
+    # Jalankan Server
     npm run dev
     ```
 
@@ -92,28 +92,28 @@ Follow these steps to run the project locally.
     npm run dev
     ```
 
-4.  **Access Application**
-    Open `http://localhost:5173` in your browser.
-    - **Default Admin Login**: `admin` / `password123`
+4.  **Akses Aplikasi**
+    Buka `http://localhost:5173` di browser Anda.
+    - **Login Admin Default**: `admin` / `password123`
 
-## 📸 Screenshots
+## 📸 Tangkapan Layar (Screenshots)
 
-| Dashboard                            | Stock List                               |
+| Dashboard                            | Daftar Stok                              |
 | ------------------------------------ | ---------------------------------------- |
 | ![Dashboard](./assets/Dashboard.png) | ![Stock List](./assets/Product_list.png) |
 
-| Order Form                             | Audit Logs                            |
+| Formulir Pesanan                       | Log Audit                             |
 | -------------------------------------- | ------------------------------------- |
 | ![Order Form](./assets/Order_form.png) | ![Audit Logs](./assets/Audit_log.png) |
 
-## 🤝 Contributing
+## 🤝 Kontribusi
 
-Contributions are welcome! Please run the test suite before submitting a Pull Request.
+Kontribusi sangat diterima! Silakan jalankan test suite sebelum mengirimkan Pull Request.
 
-## 📄 License
+## 📄 Lisensi
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Proyek ini dilisensikan di bawah Lisensi MIT - lihat file [LICENSE](LICENSE) untuk detailnya.
 
 ---
 
-_Built with ❤️ by Arvin_
+_Dibuat dengan ❤️ oleh Arvin_
